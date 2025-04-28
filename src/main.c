@@ -22,36 +22,6 @@
 #include "zb_mem_config_custom.h"
 #include "zb_dimmer_switch.h"
 
-#if defined(CONFIG_LIGHT_SWITCH_CONFIGURE_TX_POWER)
-#include <osif/mac_platform.h>
-#endif
-
-#if CONFIG_ZIGBEE_FOTA
-#include <zigbee/zigbee_fota.h>
-#include <zephyr/sys/reboot.h>
-#include <zephyr/dfu/mcuboot.h>
-
-/* LED indicating OTA Client Activity. */
-#define OTA_ACTIVITY_LED          DK_LED2
-#endif /* CONFIG_ZIGBEE_FOTA */
-
-#if CONFIG_BT_NUS
-#include "nus_cmd.h"
-
-/* LED which indicates that Central is connected. */
-#define NUS_STATUS_LED            DK_LED1
-/* UART command that will turn on found light bulb(s). */
-#define COMMAND_ON                "n"
-/**< UART command that will turn off found light bulb(s). */
-#define COMMAND_OFF               "f"
-/**< UART command that will turn toggle found light bulb(s). */
-#define COMMAND_TOGGLE            "t"
-/**< UART command that will increase brightness of found light bulb(s). */
-#define COMMAND_INCREASE          "i"
-/**< UART command that will decrease brightness of found light bulb(s). */
-#define COMMAND_DECREASE          "d"
-#endif /* CONFIG_BT_NUS */
-
 /* Source endpoint used to control light bulb. */
 #define LIGHT_SWITCH_ENDPOINT      1
 /* Delay between the light switch startup and light bulb finding procedure. */
@@ -175,19 +145,7 @@ ZB_DECLARE_DIMMER_SWITCH_EP(
 /* Declare application's device context (list of registered endpoints)
  * for Dimmer Switch device.
  */
-#ifndef CONFIG_ZIGBEE_FOTA
 ZBOSS_DECLARE_DEVICE_CTX_1_EP(dimmer_switch_ctx, dimmer_switch_ep);
-#else
-
-  #if LIGHT_SWITCH_ENDPOINT == CONFIG_ZIGBEE_FOTA_ENDPOINT
-    #error "Light switch and Zigbee OTA endpoints should be different."
-  #endif
-
-extern zb_af_endpoint_desc_t zigbee_fota_client_ep;
-ZBOSS_DECLARE_DEVICE_CTX_2_EP(dimmer_switch_ctx,
-                  zigbee_fota_client_ep,
-                  dimmer_switch_ep);
-#endif /* CONFIG_ZIGBEE_FOTA */
 
 /* Forward declarations. */
 static void light_switch_button_handler(struct k_timer *timer);
@@ -549,64 +507,6 @@ static void light_switch_button_handler(struct k_timer *timer)
     }
 }
 
-#ifdef CONFIG_ZIGBEE_FOTA
-static void confirm_image(void)
-{
-    if (!boot_is_img_confirmed()) {
-        int ret = boot_write_img_confirmed();
-
-        if (ret) {
-            LOG_ERR("Couldn't confirm image: %d", ret);
-        } else {
-            LOG_INF("Marked image as OK");
-        }
-    }
-}
-
-static void ota_evt_handler(const struct zigbee_fota_evt *evt)
-{
-    switch (evt->id) {
-    case ZIGBEE_FOTA_EVT_PROGRESS:
-        dk_set_led(OTA_ACTIVITY_LED, evt->dl.progress % 2);
-        break;
-
-    case ZIGBEE_FOTA_EVT_FINISHED:
-        LOG_INF("Reboot application.");
-        /* Power on unused sections of RAM to allow MCUboot to use it. */
-        if (IS_ENABLED(CONFIG_RAM_POWER_DOWN_LIBRARY)) {
-            power_up_unused_ram();
-        }
-
-        sys_reboot(SYS_REBOOT_COLD);
-        break;
-
-    case ZIGBEE_FOTA_EVT_ERROR:
-        LOG_ERR("OTA image transfer failed.");
-        break;
-
-    default:
-        break;
-    }
-}
-
-/**@brief Callback function for handling ZCL commands.
- *
- * @param[in]   bufid   Reference to Zigbee stack buffer
- *                      used to pass received data.
- */
-static void zcl_device_cb(zb_bufid_t bufid)
-{
-    zb_zcl_device_callback_param_t *device_cb_param =
-        ZB_BUF_GET_PARAM(bufid, zb_zcl_device_callback_param_t);
-
-    if (device_cb_param->device_cb_id == ZB_ZCL_OTA_UPGRADE_VALUE_CB_ID) {
-        zigbee_fota_zcl_cb(bufid);
-    } else {
-        device_cb_param->status = RET_NOT_IMPLEMENTED;
-    }
-}
-#endif /* CONFIG_ZIGBEE_FOTA */
-
 /**@brief Zigbee stack event handler.
  *
  * @param[in]   bufid   Reference to the Zigbee stack buffer
@@ -620,11 +520,6 @@ void zboss_signal_handler(zb_bufid_t bufid)
 
     /* Update network status LED. */
     zigbee_led_status_update(bufid, ZIGBEE_NETWORK_STATE_LED);
-
-#ifdef CONFIG_ZIGBEE_FOTA
-    /* Pass signal to the OTA client implementation. */
-    zigbee_fota_signal_handler(bufid);
-#endif /* CONFIG_ZIGBEE_FOTA */
 
     switch (sig) {
     case ZB_BDB_SIGNAL_DEVICE_REBOOT:
@@ -666,149 +561,6 @@ void zboss_signal_handler(zb_bufid_t bufid)
     }
 }
 
-#if CONFIG_BT_NUS
-
-static void turn_on_cmd(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    zb_buf_get_out_delayed_ext(light_switch_send_on_off,
-                   ZB_ZCL_CMD_ON_OFF_ON_ID, 0);
-}
-
-static void turn_off_cmd(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    zb_buf_get_out_delayed_ext(light_switch_send_on_off,
-                   ZB_ZCL_CMD_ON_OFF_OFF_ID, 0);
-}
-
-static void toggle_cmd(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    zb_buf_get_out_delayed_ext(light_switch_send_on_off,
-                   ZB_ZCL_CMD_ON_OFF_TOGGLE_ID, 0);
-}
-
-static void increase_cmd(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    zb_buf_get_out_delayed_ext(light_switch_send_step,
-                   ZB_ZCL_LEVEL_CONTROL_STEP_MODE_UP, 0);
-}
-
-static void decrease_cmd(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    zb_buf_get_out_delayed_ext(light_switch_send_step,
-                   ZB_ZCL_LEVEL_CONTROL_STEP_MODE_DOWN, 0);
-}
-
-static void on_nus_connect(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    dk_set_led_on(NUS_STATUS_LED);
-}
-
-static void on_nus_disconnect(struct k_work *item)
-{
-    ARG_UNUSED(item);
-    dk_set_led_off(NUS_STATUS_LED);
-}
-
-static struct nus_entry commands[] = {
-    NUS_COMMAND(COMMAND_ON, turn_on_cmd),
-    NUS_COMMAND(COMMAND_OFF, turn_off_cmd),
-    NUS_COMMAND(COMMAND_TOGGLE, toggle_cmd),
-    NUS_COMMAND(COMMAND_INCREASE, increase_cmd),
-    NUS_COMMAND(COMMAND_DECREASE, decrease_cmd),
-    NUS_COMMAND(NULL, NULL),
-};
-
-#endif /* CONFIG_BT_NUS */
-
-#if defined(CONFIG_LIGHT_SWITCH_CONFIGURE_TX_POWER)
-
-/**@brief Callback for TX power setting result.
- *
- * @param  param  Reference to Zigbee stack buffer.
- */
-static void tx_power_cb(zb_bufid_t param)
-{
-    char *status = NULL;
-    zb_tx_power_params_t *power_params = zb_buf_begin(param);
-
-    switch (power_params->status) {
-    case RET_OK:
-        status = "success";
-        break;
-    case RET_INVALID_PARAMETER_1:
-        status = "invalid page";
-        break;
-    case RET_INVALID_PARAMETER_2:
-        status = "invalid channel";
-        break;
-    case RET_INVALID_PARAMETER_3:
-        status = "invalid tx power";
-        break;
-    default:
-        status = "unknown";
-        break;
-    }
-
-    LOG_INF("Zigbee transceiver tx power set result (pg: %d, ch: %d, pw: %d): %s",
-        power_params->page, power_params->channel, power_params->tx_power, status);
-
-    zb_buf_free(param);
-}
-
-/**@brief Function for scheduling TX power set.
- *
- * @param  param    Reference to Zigbee stack buffer.
- * @param  channel  Channel number.
- */
-static void schedule_tx_power_set(zb_bufid_t param, zb_uint16_t channel)
-{
-    zb_tx_power_params_t *power_params;
-
-    power_params = zb_buf_initial_alloc(param, sizeof(zb_tx_power_params_t));
-
-    power_params->page = ZB_CHANNEL_PAGE0_2_4_GHZ;
-    power_params->channel = channel;
-    power_params->tx_power = CONFIG_LIGHT_SWITCH_TX_POWER;
-    power_params->cb = tx_power_cb;
-
-    ZB_SCHEDULE_APP_CALLBACK(zb_set_tx_power_async, param);
-}
-
-/**@brief Function for setting TX power for configured channels.
- */
-void set_tx_power(void)
-{
-    zb_ret_t ret;
-    uint32_t channel_mask;
-    uint8_t channel = ZB_TRANSCEIVER_START_CHANNEL_NUMBER;
-
-#if defined(CONFIG_ZIGBEE_CHANNEL_SELECTION_MODE_SINGLE)
-    channel_mask = 1 << CONFIG_ZIGBEE_CHANNEL;
-#elif defined(CONFIG_ZIGBEE_CHANNEL_SELECTION_MODE_MULTI)
-    channel_mask = CONFIG_ZIGBEE_CHANNEL_MASK;
-#endif
-
-    for (; channel <= ZB_TRANSCEIVER_MAX_CHANNEL_NUMBER; channel++) {
-        if (channel_mask & (1 << channel)) {
-            LOG_INF("Setting tx power for channel %d: %d dBm", channel,
-                CONFIG_LIGHT_SWITCH_TX_POWER);
-            ret = zb_buf_get_out_delayed_ext(schedule_tx_power_set, channel, 0);
-            if (ret != RET_OK) {
-                LOG_ERR("Failed to set tx power for channel %d, error %d",
-                    channel, ret);
-            }
-        }
-    }
-}
-
-#endif /* CONFIG_LIGHT_SWITCH_CONFIGURE_TX_POWER */
-
 int main(void)
 {
     LOG_INF("Starting Zigbee R23 Light Switch example");
@@ -840,17 +592,6 @@ int main(void)
         power_down_unused_ram();
     }
 
-#ifdef CONFIG_ZIGBEE_FOTA
-    /* Initialize Zigbee FOTA download service. */
-    zigbee_fota_init(ota_evt_handler);
-
-    /* Mark the current firmware as valid. */
-    confirm_image();
-
-    /* Register callback for handling ZCL commands. */
-    ZB_ZCL_REGISTER_DEVICE_CB(zcl_device_cb);
-#endif /* CONFIG_ZIGBEE_FOTA */
-
     /* Register dimmer switch device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(&dimmer_switch_ctx);
 
@@ -858,21 +599,8 @@ int main(void)
 
     /* Register handlers to identify notifications */
     ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(LIGHT_SWITCH_ENDPOINT, identify_cb);
-#ifdef CONFIG_ZIGBEE_FOTA
-    ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(CONFIG_ZIGBEE_FOTA_ENDPOINT, identify_cb);
-#endif /* CONFIG_ZIGBEE_FOTA */
-
-#if defined(CONFIG_LIGHT_SWITCH_CONFIGURE_TX_POWER)
-    set_tx_power();
-#endif /* CONFIG_LIGHT_SWITCH_CONFIGURE_TX_POWER */
-
     /* Start Zigbee default thread. */
     zigbee_enable();
-
-#if CONFIG_BT_NUS
-    /* Initialize NUS command service. */
-    nus_cmd_init(on_nus_connect, on_nus_disconnect, commands);
-#endif /* CONFIG_BT_NUS */
 
     LOG_INF("Zigbee R23 Light Switch example started");
 
