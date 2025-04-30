@@ -14,8 +14,11 @@
 #include <dk_buttons_and_leds.h>
 #include <ram_pwrdn.h>
 
+#define ZB_HA_DEFINE_DEVICE_SCENE_SELECTOR
+
 #include <zboss_api.h>
 #include <zboss_api_addons.h>
+#include <ha/zb_ha_scene_selector.h>
 #include <zigbee/zigbee_app_utils.h>
 #include <zigbee/zigbee_error_handler.h>
 #include <zb_nrf_platform.h>
@@ -24,6 +27,7 @@
 
 /* Source endpoint used to control light bulb. */
 #define LIGHT_SWITCH_ENDPOINT      1
+#define SCENE_SELECTOR_ENDPOINT      1
 /* Delay between the light switch startup and light bulb finding procedure. */
 #define MATCH_DESC_REQ_START_DELAY K_SECONDS(2)
 /* Timeout for finding procedure. */
@@ -49,7 +53,7 @@
 /* Dim step size - increases/decreses current level (range 0x000 - 0xfe). */
 #define DIMM_STEP                  15
 /* Button ID used to enable sleepy behavior. */
-#define BUTTON_SLEEPY              DK_BTN3_MSK
+//#define BUTTON_SLEEPY              DK_BTN3_MSK
 
 /* Button to start Factory Reset */
 #define FACTORY_RESET_BUTTON       DK_BTN4_MSK
@@ -86,7 +90,6 @@ struct buttons_context {
 };
 
 struct zb_device_ctx {
-    zb_zcl_basic_attrs_t basic_attr;
     zb_zcl_identify_attrs_t identify_attr;
 };
 
@@ -94,58 +97,45 @@ static struct bulb_context bulb_ctx;
 static struct buttons_context buttons_ctx;
 static struct zb_device_ctx dev_ctx;
 
-/* Declare attribute list for Basic cluster (server). */
-ZB_ZCL_DECLARE_BASIC_SERVER_ATTRIB_LIST(
-    basic_server_attr_list,
-    &dev_ctx.basic_attr.zcl_version,
-    &dev_ctx.basic_attr.power_source);
+zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_application_version = ZB_ZCL_BASIC_APPLICATION_VERSION_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_stack_version = ZB_ZCL_BASIC_STACK_VERSION_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_hw_version = ZB_ZCL_BASIC_HW_VERSION_DEFAULT_VALUE;
+zb_char_t g_attr_basic_manufacturer_name[] = ZB_ZCL_BASIC_MANUFACTURER_NAME_DEFAULT_VALUE;
+zb_char_t g_attr_basic_model_identifier[] = ZB_ZCL_BASIC_MODEL_IDENTIFIER_DEFAULT_VALUE;
+zb_char_t g_attr_basic_date_code[] = ZB_ZCL_BASIC_DATE_CODE_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE;
+zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
+zb_char_t g_attr_sw_build_id[] = ZB_ZCL_BASIC_SW_BUILD_ID_DEFAULT_VALUE;
 
-/* Declare attribute list for Identify cluster (client). */
-ZB_ZCL_DECLARE_IDENTIFY_CLIENT_ATTRIB_LIST(
-    identify_client_attr_list);
+/* Basic cluster attributes data */
+ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
+    basic_attr_list,
+    &g_attr_basic_zcl_version,
+    &g_attr_basic_application_version,
+    &g_attr_basic_stack_version,
+    &g_attr_basic_hw_version,
+    &g_attr_basic_manufacturer_name,
+    &g_attr_basic_model_identifier,
+    &g_attr_basic_date_code,
+    &g_attr_basic_power_source,
+    &g_attr_basic_location_description,
+    &g_attr_basic_physical_environment,
+    &g_attr_sw_build_id);
 
-/* Declare attribute list for Identify cluster (server). */
-ZB_ZCL_DECLARE_IDENTIFY_SERVER_ATTRIB_LIST(
-    identify_server_attr_list,
-    &dev_ctx.identify_attr.identify_time);
+/* Identify cluster attributes data */
+zb_uint16_t g_attr_identify_identify_time = ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
+ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identify_time);
 
-/* Declare attribute list for Scenes cluster (client). */
-ZB_ZCL_DECLARE_SCENES_CLIENT_ATTRIB_LIST(
-    scenes_client_attr_list);
+/* Declare cluster list for device. */
+ZB_HA_DECLARE_SCENE_SELECTOR_CLUSTER_LIST(scene_selector_clusters, basic_attr_list, identify_attr_list);
 
-/* Declare attribute list for Groups cluster (client). */
-ZB_ZCL_DECLARE_GROUPS_CLIENT_ATTRIB_LIST(
-    groups_client_attr_list);
+/* Declare endpoint for device. */
+ZB_HA_DECLARE_SCENE_SELECTOR_EP(scene_selector_ep, SCENE_SELECTOR_ENDPOINT, scene_selector_clusters);
 
-/* Declare attribute list for On/Off cluster (client). */
-ZB_ZCL_DECLARE_ON_OFF_CLIENT_ATTRIB_LIST(
-    on_off_client_attr_list);
-
-/* Declare attribute list for Level control cluster (client). */
-ZB_ZCL_DECLARE_LEVEL_CONTROL_CLIENT_ATTRIB_LIST(
-    level_control_client_attr_list);
-
-/* Declare cluster list for Dimmer Switch device. */
-ZB_DECLARE_DIMMER_SWITCH_CLUSTER_LIST(
-    dimmer_switch_clusters,
-    basic_server_attr_list,
-    identify_client_attr_list,
-    identify_server_attr_list,
-    scenes_client_attr_list,
-    groups_client_attr_list,
-    on_off_client_attr_list,
-    level_control_client_attr_list);
-
-/* Declare endpoint for Dimmer Switch device. */
-ZB_DECLARE_DIMMER_SWITCH_EP(
-    dimmer_switch_ep,
-    LIGHT_SWITCH_ENDPOINT,
-    dimmer_switch_clusters);
-
-/* Declare application's device context (list of registered endpoints)
- * for Dimmer Switch device.
- */
-ZBOSS_DECLARE_DEVICE_CTX_1_EP(dimmer_switch_ctx, dimmer_switch_ep);
+/* Declare application's device context (list of registered endpoints) */
+ZB_HA_DECLARE_SCENE_SELECTOR_CTX(device_ctx, scene_selector_ep);
 
 /* Forward declarations. */
 static void light_switch_button_handler(struct k_timer *timer);
@@ -286,16 +276,12 @@ static void configure_gpio(void)
 static void alarm_timers_init(void)
 {
     k_timer_init(&buttons_ctx.alarm, light_switch_button_handler, NULL);
-    k_timer_init(&bulb_ctx.find_alarm, find_light_bulb_alarm, NULL);
+    //k_timer_init(&bulb_ctx.find_alarm, find_light_bulb_alarm, NULL);
 }
 
 /**@brief Function for initializing all clusters attributes. */
 static void app_clusters_attr_init(void)
 {
-    /* Basic cluster attributes data. */
-    dev_ctx.basic_attr.zcl_version = ZB_ZCL_VERSION;
-    dev_ctx.basic_attr.power_source = ZB_ZCL_BASIC_POWER_SOURCE_UNKNOWN;
-
     /* Identify cluster attributes data. */
     dev_ctx.identify_attr.identify_time = ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
 }
@@ -561,6 +547,32 @@ void zboss_signal_handler(zb_bufid_t bufid)
     }
 }
 
+zb_uint8_t zcl_specific_cluster_cmd_handler(zb_uint8_t param)
+{
+    zb_zcl_parsed_hdr_t cmd_info;
+    zb_uint8_t lqi = ZB_MAC_LQI_UNDEFINED;
+    zb_int8_t rssi = ZB_MAC_RSSI_UNDEFINED;
+
+    LOG_INF("> zcl_specific_cluster_cmd_handler");
+
+    ZB_ZCL_COPY_PARSED_HEADER(param, &cmd_info);
+
+    zb_uint16_t g_dst_addr = ZB_ZCL_PARSED_HDR_SHORT_DATA(&cmd_info).source.u.short_addr;
+
+    ZB_ZCL_DEBUG_DUMP_HEADER(&cmd_info);
+    LOG_INF("payload size: %i", zb_buf_len(param));
+
+    zb_zdo_get_diag_data(g_dst_addr, &lqi, &rssi);
+    LOG_INF("lqi %hd rssi %d", lqi, rssi);
+
+    if (cmd_info.cmd_direction == ZB_ZCL_FRAME_DIRECTION_TO_CLI)
+    {
+        LOG_ERR("Unsupported \"from server\" command direction");
+    }
+    LOG_INF("< zcl_specific_cluster_cmd_handler");
+    return ZB_FALSE;
+}
+
 int main(void)
 {
     LOG_INF("Starting Zigbee R23 Light Switch example");
@@ -570,7 +582,8 @@ int main(void)
     alarm_timers_init();
     register_factory_reset_button(FACTORY_RESET_BUTTON);
 
-    zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
+    //TODO sprawdzić z true
+    //zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
 
@@ -582,23 +595,25 @@ int main(void)
      * is pressed.
      */
 #if defined BUTTON_SLEEPY
-    if (dk_get_buttons() & BUTTON_SLEEPY) {
-        zigbee_configure_sleepy_behavior(true);
-    }
+    //if (dk_get_buttons() & BUTTON_SLEEPY) {
+    //    zigbee_configure_sleepy_behavior(true);
+    //}
 #endif
 
     /* Power off unused sections of RAM to lower device power consumption. */
-    if (IS_ENABLED(CONFIG_RAM_POWER_DOWN_LIBRARY)) {
-        power_down_unused_ram();
-    }
+    //if (IS_ENABLED(CONFIG_RAM_POWER_DOWN_LIBRARY)) {
+    //    power_down_unused_ram();
+    //}
 
-    /* Register dimmer switch device context (endpoints). */
-    ZB_AF_REGISTER_DEVICE_CTX(&dimmer_switch_ctx);
+    /* Register device context (endpoints). */
+    ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
 
     app_clusters_attr_init();
 
     /* Register handlers to identify notifications */
-    ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(LIGHT_SWITCH_ENDPOINT, identify_cb);
+    //ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(LIGHT_SWITCH_ENDPOINT, identify_cb);
+    ZB_AF_SET_ENDPOINT_HANDLER(SCENE_SELECTOR_ENDPOINT, zcl_specific_cluster_cmd_handler);
+
     /* Start Zigbee default thread. */
     zigbee_enable();
 

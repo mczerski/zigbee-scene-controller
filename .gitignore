@@ -71,6 +71,7 @@ TAGS
 tags
 
 .idea
+.vim
 
 # from check_compliance.py
 BinaryFiles.txt
