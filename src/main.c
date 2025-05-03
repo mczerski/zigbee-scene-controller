@@ -37,7 +37,7 @@
 
 /* Source endpoint used to control light bulb. */
 #define LIGHT_SWITCH_ENDPOINT      1
-#define SCENE_SELECTOR_ENDPOINT      1
+#define DEVICE_ENDPOINT      1
 /* Delay between the light switch startup and light bulb finding procedure. */
 #define MATCH_DESC_REQ_START_DELAY K_SECONDS(2)
 /* Timeout for finding procedure. */
@@ -107,6 +107,7 @@ static struct bulb_context bulb_ctx;
 static struct buttons_context buttons_ctx;
 static struct zb_device_ctx dev_ctx;
 
+/* Basic cluster attributes data */
 zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_application_version = ZB_ZCL_BASIC_APPLICATION_VERSION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_stack_version = ZB_ZCL_BASIC_STACK_VERSION_DEFAULT_VALUE;
@@ -118,8 +119,7 @@ zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE;
 zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
 zb_char_t g_attr_sw_build_id[] = ZB_ZCL_BASIC_SW_BUILD_ID_DEFAULT_VALUE;
-
-/* Basic cluster attributes data */
+ 
 ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
     basic_attr_list,
     &g_attr_basic_zcl_version,
@@ -132,20 +132,25 @@ ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
     &g_attr_basic_power_source,
     &g_attr_basic_location_description,
     &g_attr_basic_physical_environment,
-    &g_attr_sw_build_id);
+    &g_attr_sw_build_id
+);
 
 /* Identify cluster attributes data */
 zb_uint16_t g_attr_identify_identify_time = ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
+/* On/Off Switch Configuration cluster attributes data */
+zb_uint8_t g_attr_on_off_switch_configuration_switch_type = 0;
+zb_uint8_t g_attr_on_off_switch_configuration_switch_actions = ZB_ZCL_ON_OFF_SWITCH_CONFIGURATION_SWITCH_ACTIONS_DEFAULT_VALUE;
+ZB_ZCL_DECLARE_ON_OFF_SWITCH_CONFIGURATION_ATTRIB_LIST(
+    on_off_switch_configuration_attr_list,
+    &g_attr_on_off_switch_configuration_switch_type,
+    &g_attr_on_off_switch_configuration_switch_actions
+);
 ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identify_time);
 
-/* Declare cluster list for device. */
-ZB_HA_DECLARE_SCENE_SELECTOR_CLUSTER_LIST(scene_selector_clusters, basic_attr_list, identify_attr_list);
-
-/* Declare endpoint for device. */
-ZB_HA_DECLARE_SCENE_SELECTOR_EP(scene_selector_ep, SCENE_SELECTOR_ENDPOINT, scene_selector_clusters);
-
-/* Declare application's device context (list of registered endpoints) */
-ZB_HA_DECLARE_SCENE_SELECTOR_CTX(device_ctx, scene_selector_ep);
+/********************* Declare device **************************/
+ZB_HA_DECLARE_ON_OFF_SWITCH_CLUSTER_LIST(on_off_switch_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list);
+ZB_HA_DECLARE_ON_OFF_SWITCH_EP(on_off_switch_ep, DEVICE_ENDPOINT, on_off_switch_clusters);
+ZB_HA_DECLARE_ON_OFF_SWITCH_CTX(device_ctx, on_off_switch_ep);
 
 /* Forward declarations. */
 static void light_switch_button_handler(struct k_timer *timer);
@@ -187,11 +192,11 @@ static void start_identifying(zb_bufid_t bufid)
     }
 }
 
-static void scene_recall_callback(zb_bufid_t buffer)
+static void on_off_callback(zb_bufid_t buffer)
 {
     zb_uint8_t status = zb_buf_get_status(buffer);
 
-    LOG_INF("scene_recall_callback %d", buffer);
+    LOG_INF("on_off_callback %d", buffer);
 
     LOG_INF("buffer %d", buffer);
     LOG_INF("status %d", status);
@@ -249,18 +254,17 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
         }
 
         /* Send the scene recall command */
-        ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
+        ZB_ZCL_ON_OFF_SEND_REQ(
             bufid,
             coordinator_addr,
             ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
             1,
-            SCENE_SELECTOR_ENDPOINT,
+            DEVICE_ENDPOINT,
             ZB_AF_HA_PROFILE_ID,
             ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-            scene_recall_callback,
-            0,
-            scene_id)
-        LOG_INF("sent recall %d", bufid);
+            ZB_ZCL_CMD_ON_OFF_ON_ID,
+            on_off_callback)
+        LOG_INF("sent on off %d", bufid);
     }
 }
 
