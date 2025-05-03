@@ -25,6 +25,16 @@
 #include "zb_mem_config_custom.h"
 #include "zb_dimmer_switch.h"
 
+#define BUTTON_SCENE_1              DK_BTN1_MSK  /* Scene 1 activation */
+#define BUTTON_SCENE_2              DK_BTN2_MSK  /* Scene 2 activation */
+#define BUTTON_SCENE_3              DK_BTN3_MSK  /* Scene 3 activation */
+#define BUTTON_SCENE_4              DK_BTN4_MSK  /* Scene 4 activation */
+/* Scene IDs */
+#define SCENE_1_ID                  0x01
+#define SCENE_2_ID                  0x02
+#define SCENE_3_ID                  0x03
+#define SCENE_4_ID                  0x04
+
 /* Source endpoint used to control light bulb. */
 #define LIGHT_SWITCH_ENDPOINT      1
 #define SCENE_SELECTOR_ENDPOINT      1
@@ -177,6 +187,19 @@ static void start_identifying(zb_bufid_t bufid)
     }
 }
 
+static void scene_recall_callback(zb_bufid_t buffer)
+{
+    zb_uint8_t status = zb_buf_get_status(buffer);
+
+    LOG_INF("scene_recall_callback %d", buffer);
+
+    LOG_INF("buffer %d", buffer);
+    LOG_INF("status %d", status);
+
+    /* Free the buffer */
+    zb_buf_free(buffer);
+}
+
 /**@brief Callback for button events.
  *
  * @param[in]   button_state  Bitmask containing buttons state.
@@ -185,75 +208,59 @@ static void start_identifying(zb_bufid_t bufid)
  */
 static void button_handler(uint32_t button_state, uint32_t has_changed)
 {
-    zb_uint16_t cmd_id;
-    zb_ret_t zb_err_code;
+    uint16_t coordinator_addr = 0x0000;
+    zb_uint8_t scene_id = 0;
 
     /* Inform default signal handler about user input at the device. */
     user_input_indicate();
 
     check_factory_reset_button(button_state, has_changed);
 
-    if (bulb_ctx.short_addr == 0xFFFF) {
-        LOG_DBG("No bulb found yet.");
+    /* Only handle button press events, not releases */
+    if ((has_changed & button_state) == 0) {
         return;
     }
 
-    switch (has_changed) {
-    case BUTTON_ON:
-        LOG_DBG("ON - button changed");
-        cmd_id = ZB_ZCL_CMD_ON_OFF_ON_ID;
-        break;
-    case BUTTON_OFF:
-        LOG_DBG("OFF - button changed");
-        cmd_id = ZB_ZCL_CMD_ON_OFF_OFF_ID;
-        break;
-    case IDENTIFY_MODE_BUTTON:
-        if (IDENTIFY_MODE_BUTTON & button_state) {
-            /* Button changed its state to pressed */
-        } else {
-            /* Button changed its state to released */
-            if (was_factory_reset_done()) {
-                /* The long press was for Factory Reset */
-                LOG_DBG("After Factory Reset - ignore button release");
-            } else   {
-                /* Button released before Factory Reset */
-
-                /* Start identification mode */
-                ZB_SCHEDULE_APP_CALLBACK(start_identifying, 0);
-            }
-        }
-        return;
-    default:
-        LOG_DBG("Unhandled button");
-        return;
+    /* Determine which button was pressed and send corresponding scene command */
+    if (has_changed & BUTTON_SCENE_1) {
+        scene_id = SCENE_1_ID;
+        LOG_INF("Activating Scene 1");
+    } else if (has_changed & BUTTON_SCENE_2) {
+        scene_id = SCENE_2_ID;
+        LOG_INF("Activating Scene 2");
+    } else if (has_changed & BUTTON_SCENE_3) {
+        scene_id = SCENE_3_ID;
+        LOG_INF("Activating Scene 3");
+    } else if (has_changed & BUTTON_SCENE_4) {
+        scene_id = SCENE_4_ID;
+        LOG_INF("Activating Scene 4");
+    } else {
+        return; // No relevant button pressed
     }
 
-    switch (button_state) {
-    case BUTTON_ON:
-    case BUTTON_OFF:
-        LOG_DBG("Button pressed");
-        buttons_ctx.state = button_state;
+    /* If we have a valid scene ID, activate the scene */
+    if (scene_id > 0) {
+        /* Allocate a buffer for the scene recall command */
+        zb_bufid_t bufid = zb_buf_get_out();
 
-        /* Alarm can be scheduled only once. Next alarm only resets
-         * counting.
-         */
-        k_timer_start(&buttons_ctx.alarm, BUTTON_LONG_POLL_TMO,
-                  K_NO_WAIT);
-        break;
-    case 0:
-        LOG_DBG("Button released");
-
-        k_timer_stop(&buttons_ctx.alarm);
-
-        if (atomic_set(&buttons_ctx.long_poll, ZB_FALSE) == ZB_FALSE) {
-            /* Allocate output buffer and send on/off command. */
-            zb_err_code = zb_buf_get_out_delayed_ext(
-                light_switch_send_on_off, cmd_id, 0);
-            ZB_ERROR_CHECK(zb_err_code);
+        if (!bufid) {
+            LOG_ERR("Failed to allocate buffer for scene recall");
+            return;
         }
-        break;
-    default:
-        break;
+
+        /* Send the scene recall command */
+        ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
+            bufid,
+            coordinator_addr,
+            ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+            1,
+            SCENE_SELECTOR_ENDPOINT,
+            ZB_AF_HA_PROFILE_ID,
+            ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
+            scene_recall_callback,
+            0,
+            scene_id)
+        LOG_INF("sent recall %d", bufid);
     }
 }
 
@@ -276,7 +283,7 @@ static void configure_gpio(void)
 static void alarm_timers_init(void)
 {
     k_timer_init(&buttons_ctx.alarm, light_switch_button_handler, NULL);
-    //k_timer_init(&bulb_ctx.find_alarm, find_light_bulb_alarm, NULL);
+    k_timer_init(&bulb_ctx.find_alarm, find_light_bulb_alarm, NULL);
 }
 
 /**@brief Function for initializing all clusters attributes. */
@@ -579,16 +586,16 @@ int main(void)
 
     /* Initialize. */
     configure_gpio();
-    alarm_timers_init();
-    register_factory_reset_button(FACTORY_RESET_BUTTON);
+    //alarm_timers_init();
+    //register_factory_reset_button(FACTORY_RESET_BUTTON);
 
     //TODO sprawdzić z true
-    //zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
-    zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
-    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
+    zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
+    //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
+    //zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
 
     /* Set default bulb short_addr. */
-    bulb_ctx.short_addr = 0xFFFF;
+    //bulb_ctx.short_addr = 0xFFFF;
 
     /* If "sleepy button" is defined, check its state during Zigbee
      * initialization and enable sleepy behavior at device if defined button
@@ -608,11 +615,11 @@ int main(void)
     /* Register device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
 
-    app_clusters_attr_init();
+    //app_clusters_attr_init();
 
     /* Register handlers to identify notifications */
     //ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(LIGHT_SWITCH_ENDPOINT, identify_cb);
-    ZB_AF_SET_ENDPOINT_HANDLER(SCENE_SELECTOR_ENDPOINT, zcl_specific_cluster_cmd_handler);
+    //ZB_AF_SET_ENDPOINT_HANDLER(SCENE_SELECTOR_ENDPOINT, zcl_specific_cluster_cmd_handler);
 
     /* Start Zigbee default thread. */
     zigbee_enable();
