@@ -18,8 +18,8 @@
 #include <zigbee/zigbee_error_handler.h>
 #include <zb_nrf_platform.h>
 
-#define BUTTON_MSK                  DK_BTN1_MSK  /* Scene 1 activation */
-#define DEVICE_ENDPOINT      1
+#define BUTTON_MSK                 DK_BTN1_MSK  /* Scene 1 activation */
+#define DEVICE_ENDPOINT            1
 
 /* Do not erase NVRAM to save the network parameters after device reboot or
  * power-off. NOTE: If this option is set to ZB_TRUE then do full device erase
@@ -31,10 +31,10 @@
 /* LED used for device identification. */
 #define IDENTIFY_LED               ZIGBEE_NETWORK_STATE_LED
 /* Button ID used to enable sleepy behavior. */
-//#define BUTTON_SLEEPY              DK_BTN3_MSK
+#define BUTTON_SLEEPY              DK_BTN1_MSK
 
 /* Button to start Factory Reset */
-#define FACTORY_RESET_BUTTON       DK_BTN4_MSK
+#define FACTORY_RESET_BUTTON       DK_BTN1_MSK
 
 #if !defined ZB_ED_ROLE
 #error Define ZB_ED_ROLE to compile light switch (End Device) source code.
@@ -51,16 +51,16 @@ static struct buttons_context buttons_ctx;
 
 /* Basic cluster attributes data */
 zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
-zb_uint8_t g_attr_basic_application_version = ZB_ZCL_BASIC_APPLICATION_VERSION_DEFAULT_VALUE;
-zb_uint8_t g_attr_basic_stack_version = ZB_ZCL_BASIC_STACK_VERSION_DEFAULT_VALUE;
-zb_uint8_t g_attr_basic_hw_version = ZB_ZCL_BASIC_HW_VERSION_DEFAULT_VALUE;
-zb_char_t g_attr_basic_manufacturer_name[] = ZB_ZCL_BASIC_MANUFACTURER_NAME_DEFAULT_VALUE;
-zb_char_t g_attr_basic_model_identifier[] = ZB_ZCL_BASIC_MODEL_IDENTIFIER_DEFAULT_VALUE;
-zb_char_t g_attr_basic_date_code[] = ZB_ZCL_BASIC_DATE_CODE_DEFAULT_VALUE;
-zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE;
+zb_uint8_t g_attr_basic_application_version = (0 << 4) | 1;
+zb_uint8_t g_attr_basic_stack_version = (ZBOSS_MAJOR << 4) | ZBOSS_MINOR;
+zb_uint8_t g_attr_basic_hw_version = (0 << 4) | 1;
+zb_char_t g_attr_basic_manufacturer_name[] = "\x0d" "Marek Czerski";
+zb_char_t g_attr_basic_model_identifier[] = "\x10" "Scene controller";
+zb_char_t g_attr_basic_date_code[] = "\x08" "20250503";
+zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_BATTERY;
 zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
-zb_char_t g_attr_sw_build_id[] = ZB_ZCL_BASIC_SW_BUILD_ID_DEFAULT_VALUE;
+zb_char_t g_attr_sw_build_id[] = "\x07" "9dff6ce";
  
 ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
     basic_attr_list,
@@ -143,7 +143,7 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
             buttons_ctx.state = 0;
             k_timer_start(&buttons_ctx.press_timer, K_MSEC(500), K_NO_WAIT);
         }
-        else {
+        else if (!was_factory_reset_done()) {
             LOG_INF("Button released");
             k_timer_stop(&buttons_ctx.press_timer);
             zb_uint16_t cmd_id = ZB_ZCL_CMD_ON_OFF_ON_ID;
@@ -211,9 +211,11 @@ static void identify_cb(zb_bufid_t bufid)
     zb_ret_t zb_err_code;
 
     if (bufid) {
+        LOG_INF("Identify started");
         /* Schedule a self-scheduling function that will toggle the LED. */
         ZB_SCHEDULE_APP_CALLBACK(toggle_identify_led, bufid);
     } else {
+        LOG_INF("Identify stopped");
         /* Cancel the toggling function alarm and turn off LED. */
         zb_err_code = ZB_SCHEDULE_APP_ALARM_CANCEL(toggle_identify_led, ZB_ALARM_ANY_PARAM);
         ZVUNUSED(zb_err_code);
@@ -294,7 +296,7 @@ int main(void)
     /* Initialize. */
     configure_gpio();
     configure_timers();
-    //register_factory_reset_button(FACTORY_RESET_BUTTON);
+    register_factory_reset_button(FACTORY_RESET_BUTTON);
 
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
     //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
@@ -306,9 +308,9 @@ int main(void)
      */
 #if defined BUTTON_SLEEPY
     //TODO: sparwdzić to
-    //if (dk_get_buttons() & BUTTON_SLEEPY) {
-    //    zigbee_configure_sleepy_behavior(true);
-    //}
+    if (dk_get_buttons() & BUTTON_SLEEPY) {
+        zigbee_configure_sleepy_behavior(true);
+    }
 #endif
 
     /* Power off unused sections of RAM to lower device power consumption. */
@@ -320,9 +322,8 @@ int main(void)
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
 
     /* Register handlers to identify notifications */
-    // TODO: test that
     ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(DEVICE_ENDPOINT, identify_cb);
-    //ZB_AF_SET_ENDPOINT_HANDLER(SCENE_SELECTOR_ENDPOINT, zcl_specific_cluster_cmd_handler);
+    //ZB_AF_SET_ENDPOINT_HANDLER(DEVICE_ENDPOINT, zcl_specific_cluster_cmd_handler);
 
     /* Start Zigbee default thread. */
     zigbee_enable();
