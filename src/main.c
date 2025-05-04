@@ -17,6 +17,7 @@
 #include <zigbee/zigbee_app_utils.h>
 #include <zigbee/zigbee_error_handler.h>
 #include <zb_nrf_platform.h>
+#include "my_device.h"
 
 #define BUTTON_MSK                 DK_BTN1_MSK  /* Scene 1 activation */
 #define DEVICE_ENDPOINT            1
@@ -61,7 +62,12 @@ zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_BATTERY;
 zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
 zb_char_t g_attr_sw_build_id[] = "\x07" "9dff6ce";
- 
+
+/* Define 'bat_num' as empty in order to declare default battery set attributes. */
+/* According to Table 3-17 of ZCL specification, defining 'bat_num' as 2 or 3 allows */
+/* to declare battery set attributes for BATTERY2 and BATTERY3 */
+#define bat_num
+
 ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
     basic_attr_list,
     &g_attr_basic_zcl_version,
@@ -89,9 +95,45 @@ ZB_ZCL_DECLARE_ON_OFF_SWITCH_CONFIGURATION_ATTRIB_LIST(
 );
 ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identify_time);
 
+/* Power configuration cluster attributes data */
+zb_uint8_t g_attr_battery_voltage = 3900 / 100; //100mV unit //ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_INVALID;
+zb_uint8_t g_attr_battery_size = ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_BUILT_IN;//ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_quantity = 1;
+zb_uint8_t g_attr_battery_rated_voltage = 3700 / 100; // 100mV unit
+zb_uint8_t g_attr_battery_alarm_mask = ZB_ZCL_POWER_CONFIG_BATTERY_ALARM_MASK_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_voltage_min_threshold = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_MIN_THRESHOLD_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_percentage_remaining = 85*2;// 0.5% unit //ZB_ZCL_POWER_CONFIG_BATTERY_REMAINING_UNKNOWN;
+zb_uint8_t g_attr_battery_voltage_threshold1 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD1_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_voltage_threshold2 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD2_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_voltage_threshold3 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD3_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_percentage_min_threshold = ZB_ZCL_POWER_CONFIG_BATTERY_PERCENTAGE_MIN_THRESHOLD_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_percentage_threshold1 = ZB_ZCL_POWER_CONFIG_BATTERY_PERCENTAGE_THRESHOLD1_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_percentage_threshold2 = ZB_ZCL_POWER_CONFIG_BATTERY_PERCENTAGE_THRESHOLD2_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_percentage_threshold3 = ZB_ZCL_POWER_CONFIG_BATTERY_PERCENTAGE_THRESHOLD3_DEFAULT_VALUE;
+zb_uint32_t g_attr_battery_alarm_state = ZB_ZCL_POWER_CONFIG_BATTERY_ALARM_STATE_DEFAULT_VALUE;
+
+ZB_ZCL_DECLARE_POWER_CONFIG_BATTERY_ATTRIB_LIST_EXT(
+    power_config_attr_list,
+    &g_attr_battery_voltage,
+    &g_attr_battery_size,
+    &g_attr_battery_quantity,
+    &g_attr_battery_rated_voltage,
+    &g_attr_battery_alarm_mask,
+    &g_attr_battery_voltage_min_threshold,
+    &g_attr_battery_percentage_remaining,
+    &g_attr_battery_voltage_threshold1,
+    &g_attr_battery_voltage_threshold2,
+    &g_attr_battery_voltage_threshold3,
+    &g_attr_battery_percentage_min_threshold,
+    &g_attr_battery_percentage_threshold1,
+    &g_attr_battery_percentage_threshold2,
+    &g_attr_battery_percentage_threshold3,
+    &g_attr_battery_alarm_state
+);
+
 /********************* Declare device **************************/
-ZB_HA_DECLARE_ON_OFF_SWITCH_CLUSTER_LIST(on_off_switch_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list);
-ZB_HA_DECLARE_ON_OFF_SWITCH_EP(on_off_switch_ep, DEVICE_ENDPOINT, on_off_switch_clusters);
+ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(on_off_switch_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list, power_config_attr_list);
+ZB_HA_DECLARE_MY_DEVICE_EP(on_off_switch_ep, DEVICE_ENDPOINT, on_off_switch_clusters);
 ZB_HA_DECLARE_ON_OFF_SWITCH_CTX(device_ctx, on_off_switch_ep);
 
 static void on_off_callback(zb_bufid_t buffer)
@@ -121,7 +163,20 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
         cmd_id,
         on_off_callback
     )
-    LOG_INF("Send On/Off command: %d", cmd_id);
+    LOG_INF("Sent On/Off command: %d", cmd_id);
+    //ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
+    //    bufid,
+    //    addr,
+    //    ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+    //    1,
+    //    DEVICE_ENDPOINT,
+    //    ZB_AF_HA_PROFILE_ID,
+    //    ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
+    //    on_off_callback,
+    //    0, // group id
+    //    cmd_id
+    //)
+    //LOG_INF("Sent scene command: %d", cmd_id);
 }
 
 /**@brief Callback for button events.
