@@ -7,7 +7,6 @@
 /** @file
  * @brief Dimmer switch for HA profile implementation.
  */
-
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
@@ -22,6 +21,7 @@
 
 #define BUTTON_MSK                 DK_BTN1_MSK  /* Scene 1 activation */
 #define MY_DEVICE_ENDPOINT         1
+#define BATTERY_INTERVAL           60000
 
 /* Do not erase NVRAM to save the network parameters after device reboot or
  * power-off. NOTE: If this option is set to ZB_TRUE then do full device erase
@@ -58,12 +58,13 @@ static const struct adc_dt_spec adc_channels[] = {
 
 struct buttons_context {
     int state;
-    struct k_timer press_timer;
+    struct k_timer timer;
 };
 
 static struct buttons_context buttons_ctx;
 
 /* Basic cluster attributes data */
+// TODO: use deicated macros to prepare strings
 zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_application_version = (0 << 4) | 1;
 zb_uint8_t g_attr_basic_stack_version = (ZBOSS_MAJOR << 4) | ZBOSS_MINOR;
@@ -109,13 +110,13 @@ ZB_ZCL_DECLARE_ON_OFF_SWITCH_CONFIGURATION_ATTRIB_LIST(
 ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identify_time);
 
 /* Power configuration cluster attributes data */
-zb_uint8_t g_attr_battery_voltage = 3900 / 100; //100mV unit //ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_INVALID;
+zb_uint8_t g_attr_battery_voltage = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_INVALID;
 zb_uint8_t g_attr_battery_size = ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_BUILT_IN;//ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_DEFAULT_VALUE;
 zb_uint8_t g_attr_battery_quantity = 1;
 zb_uint8_t g_attr_battery_rated_voltage = 3700 / 100; // 100mV unit
 zb_uint8_t g_attr_battery_alarm_mask = ZB_ZCL_POWER_CONFIG_BATTERY_ALARM_MASK_DEFAULT_VALUE;
 zb_uint8_t g_attr_battery_voltage_min_threshold = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_MIN_THRESHOLD_DEFAULT_VALUE;
-zb_uint8_t g_attr_battery_percentage_remaining = 85*2;// 0.5% unit //ZB_ZCL_POWER_CONFIG_BATTERY_REMAINING_UNKNOWN;
+zb_uint8_t g_attr_battery_percentage_remaining = ZB_ZCL_POWER_CONFIG_BATTERY_REMAINING_UNKNOWN;
 zb_uint8_t g_attr_battery_voltage_threshold1 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD1_DEFAULT_VALUE;
 zb_uint8_t g_attr_battery_voltage_threshold2 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD2_DEFAULT_VALUE;
 zb_uint8_t g_attr_battery_voltage_threshold3 = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_THRESHOLD3_DEFAULT_VALUE;
@@ -209,11 +210,11 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
         if (button_state & BUTTON_MSK) {
             LOG_INF("Button pressed");
             buttons_ctx.state = 0;
-            k_timer_start(&buttons_ctx.press_timer, K_MSEC(500), K_NO_WAIT);
+            k_timer_start(&buttons_ctx.timer, K_MSEC(500), K_NO_WAIT);
         }
         else if (!was_factory_reset_done()) {
             LOG_INF("Button released");
-            k_timer_stop(&buttons_ctx.press_timer);
+            k_timer_stop(&buttons_ctx.timer);
             zb_uint16_t cmd_id = ZB_ZCL_CMD_ON_OFF_ON_ID;
             if (buttons_ctx.state == 1) {
                 cmd_id = ZB_ZCL_CMD_ON_OFF_OFF_ID;
@@ -229,11 +230,60 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
     }
 }
 
-static void button_timer(struct k_timer *timer)
+static void button_timer_handler(struct k_timer *timer)
 {
     if (dk_get_buttons() & BUTTON_MSK) {
         buttons_ctx.state += 1;
-        k_timer_start(&buttons_ctx.press_timer, K_MSEC(1500), K_NO_WAIT);
+        k_timer_start(&buttons_ctx.timer, K_MSEC(1500), K_NO_WAIT);
+    }
+}
+
+static void battery_alarm_handler(zb_bufid_t bufid)
+{
+    ZB_SCHEDULE_APP_ALARM(battery_alarm_handler, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(BATTERY_INTERVAL));
+    LOG_ERR("battery rimer");
+
+    uint16_t buf;
+    struct adc_sequence sequence = {
+        .buffer = &buf,
+        /* buffer size in bytes, not number of samples */
+        .buffer_size = sizeof(buf),
+    };
+    adc_sequence_init_dt(&adc_channels[0], &sequence);
+    int err = adc_read_dt(&adc_channels[0], &sequence);
+    if (err < 0) {
+        LOG_ERR("Could not read (%d)", err);
+    }
+    int32_t val_mv = 5 * (int32_t)buf;
+    err = adc_raw_to_millivolts_dt(&adc_channels[0], &val_mv);
+    /* conversion to mV may not be supported, skip if not */
+    if (err < 0) {
+        LOG_ERR("value in mV not available");
+    }
+
+    zb_uint8_t battery_attribute = val_mv / 100;
+    if (zb_zcl_set_attr_val(
+            MY_DEVICE_ENDPOINT,
+            ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+            ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
+            &battery_attribute,
+            ZB_FALSE
+        ))
+    {
+        LOG_ERR("Failed to set ZCL attribute");
+    }
+    battery_attribute = 200 * val_mv / 5200;
+    if (zb_zcl_set_attr_val(
+            MY_DEVICE_ENDPOINT,
+            ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+            ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
+            &battery_attribute,
+            ZB_FALSE
+        ))
+    {
+        LOG_ERR("Failed to set ZCL attribute");
     }
 }
 
@@ -255,7 +305,7 @@ static void configure_gpio(void)
 
 static void configure_timers(void)
 {
-    k_timer_init(&buttons_ctx.press_timer, button_timer, NULL);
+    k_timer_init(&buttons_ctx.timer, button_timer_handler, NULL);
 }
 
 static void configure_adc(void)
@@ -332,6 +382,8 @@ void zboss_signal_handler(zb_bufid_t bufid)
     case ZB_BDB_SIGNAL_DEVICE_REBOOT:
     /* fall-through */
     case ZB_BDB_SIGNAL_STEERING:
+        /* start battery measurement timer */
+        ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
         /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
     case ZB_ZDO_SIGNAL_LEAVE:
@@ -417,52 +469,6 @@ int main(void)
 
     LOG_INF("Zigbee R23 Light Switch example started");
 
-    uint16_t buf;
-    struct adc_sequence sequence = {
-        .buffer = &buf,
-        /* buffer size in bytes, not number of samples */
-        .buffer_size = sizeof(buf),
-    };
-    adc_sequence_init_dt(&adc_channels[0], &sequence);
-    int err = adc_read_dt(&adc_channels[0], &sequence);
-    if (err < 0) {
-        LOG_ERR("Could not read (%d)\n", err);
-    }
-    int32_t val_mv = 5 * (int32_t)buf;
-    LOG_INF("raw: %d", val_mv);
-    err = adc_raw_to_millivolts_dt(&adc_channels[0], &val_mv);
-    /* conversion to mV may not be supported, skip if not */
-    if (err < 0) {
-        LOG_ERR("value in mV not available\n");
-    } else {
-        LOG_INF("voltage: %d mV", val_mv);
-    }
-    //zb_uint8_t battery_attribute = 32;
-    //if (zb_zcl_set_attr_val(
-    //        MY_DEVICE_ENDPOINT,
-    //        ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
-    //        ZB_ZCL_CLUSTER_SERVER_ROLE,
-    //        ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
-    //        &battery_attribute,
-    //        ZB_FALSE
-    //    ))
-    //{
-    //    LOG_ERR("Failed to set ZCL attribute");
-    //    return 0;
-    //}
-    //battery_attribute = 79*2;
-    //if (zb_zcl_set_attr_val(
-    //        MY_DEVICE_ENDPOINT,
-    //        ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
-    //        ZB_ZCL_CLUSTER_SERVER_ROLE,
-    //        ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
-    //        &battery_attribute,
-    //        ZB_FALSE
-    //    ))
-    //{
-    //    LOG_ERR("Failed to set ZCL attribute");
-    //    return 0;
-    //}
     k_sleep(K_FOREVER);
     return 0;
 }
