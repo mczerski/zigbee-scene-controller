@@ -20,7 +20,7 @@
 #include "my_device.h"
 
 #define BUTTON_MSK                 DK_BTN1_MSK  /* Scene 1 activation */
-#define DEVICE_ENDPOINT            1
+#define MY_DEVICE_ENDPOINT         1
 
 /* Do not erase NVRAM to save the network parameters after device reboot or
  * power-off. NOTE: If this option is set to ZB_TRUE then do full device erase
@@ -132,9 +132,9 @@ ZB_ZCL_DECLARE_POWER_CONFIG_BATTERY_ATTRIB_LIST_EXT(
 );
 
 /********************* Declare device **************************/
-ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(on_off_switch_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list, power_config_attr_list);
-ZB_HA_DECLARE_MY_DEVICE_EP(on_off_switch_ep, DEVICE_ENDPOINT, on_off_switch_clusters);
-ZB_HA_DECLARE_ON_OFF_SWITCH_CTX(device_ctx, on_off_switch_ep);
+ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(my_device_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list, power_config_attr_list);
+ZB_HA_DECLARE_MY_DEVICE_EP(my_device_ep, MY_DEVICE_ENDPOINT, my_device_clusters);
+ZB_HA_DECLARE_MY_DEVICE_CTX(device_ctx, my_device_ep);
 
 static void on_off_callback(zb_bufid_t buffer)
 {
@@ -157,7 +157,7 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
         addr,
         ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
         1,
-        DEVICE_ENDPOINT,
+        MY_DEVICE_ENDPOINT,
         ZB_AF_HA_PROFILE_ID,
         ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
         cmd_id,
@@ -169,7 +169,7 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
     //    addr,
     //    ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
     //    1,
-    //    DEVICE_ENDPOINT,
+    //    MY_DEVICE_ENDPOINT,
     //    ZB_AF_HA_PROFILE_ID,
     //    ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
     //    on_off_callback,
@@ -377,15 +377,40 @@ int main(void)
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
 
     /* Register handlers to identify notifications */
-    ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(DEVICE_ENDPOINT, identify_cb);
-    //ZB_AF_SET_ENDPOINT_HANDLER(DEVICE_ENDPOINT, zcl_specific_cluster_cmd_handler);
+    ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(MY_DEVICE_ENDPOINT, identify_cb);
+    //ZB_AF_SET_ENDPOINT_HANDLER(MY_DEVICE_ENDPOINT, zcl_specific_cluster_cmd_handler);
 
     /* Start Zigbee default thread. */
     zigbee_enable();
 
     LOG_INF("Zigbee R23 Light Switch example started");
 
-    while (1) {
-        k_sleep(K_FOREVER);
-    }
+    //zb_uint8_t battery_attribute = 32;
+    //if (zb_zcl_set_attr_val(
+    //        MY_DEVICE_ENDPOINT,
+    //        ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+    //        ZB_ZCL_CLUSTER_SERVER_ROLE,
+    //        ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
+    //        &battery_attribute,
+    //        ZB_FALSE
+    //    ))
+    //{
+    //    LOG_ERR("Failed to set ZCL attribute");
+    //    return 0;
+    //}
+    //battery_attribute = 79*2;
+    //if (zb_zcl_set_attr_val(
+    //        MY_DEVICE_ENDPOINT,
+    //        ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+    //        ZB_ZCL_CLUSTER_SERVER_ROLE,
+    //        ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
+    //        &battery_attribute,
+    //        ZB_FALSE
+    //    ))
+    //{
+    //    LOG_ERR("Failed to set ZCL attribute");
+    //    return 0;
+    //}
+    k_sleep(K_FOREVER);
+    return 0;
 }
