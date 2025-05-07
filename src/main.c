@@ -93,7 +93,7 @@ ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identif
 
 /* Power configuration cluster attributes data */
 zb_uint8_t g_attr_battery_voltage = ZB_ZCL_POWER_CONFIG_BATTERY_VOLTAGE_INVALID;
-zb_uint8_t g_attr_battery_size = ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_BUILT_IN;//ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_DEFAULT_VALUE;
+zb_uint8_t g_attr_battery_size = ZB_ZCL_POWER_CONFIG_BATTERY_SIZE_BUILT_IN;
 zb_uint8_t g_attr_battery_quantity = 1;
 zb_uint8_t g_attr_battery_rated_voltage = 3700 / 100; // 100mV unit
 zb_uint8_t g_attr_battery_alarm_mask = ZB_ZCL_POWER_CONFIG_BATTERY_ALARM_MASK_DEFAULT_VALUE;
@@ -148,18 +148,6 @@ static void on_off_callback(zb_bufid_t buffer)
 static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
 {
     uint16_t addr = 0x0000;
-    //ZB_ZCL_ON_OFF_SEND_REQ(
-    //    bufid,
-    //    addr,
-    //    ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-    //    1,
-    //    MY_DEVICE_ENDPOINT,
-    //    ZB_AF_HA_PROFILE_ID,
-    //    ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-    //    cmd_id,
-    //    on_off_callback
-    //)
-    //LOG_INF("Sent On/Off command: %d", cmd_id);
     ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
         bufid,
         addr,
@@ -382,32 +370,6 @@ void zboss_signal_handler(zb_bufid_t bufid)
     }
 }
 
-zb_uint8_t zcl_specific_cluster_cmd_handler(zb_uint8_t param)
-{
-    zb_zcl_parsed_hdr_t cmd_info;
-    zb_uint8_t lqi = ZB_MAC_LQI_UNDEFINED;
-    zb_int8_t rssi = ZB_MAC_RSSI_UNDEFINED;
-
-    LOG_INF("> zcl_specific_cluster_cmd_handler");
-
-    ZB_ZCL_COPY_PARSED_HEADER(param, &cmd_info);
-
-    zb_uint16_t g_dst_addr = ZB_ZCL_PARSED_HDR_SHORT_DATA(&cmd_info).source.u.short_addr;
-
-    ZB_ZCL_DEBUG_DUMP_HEADER(&cmd_info);
-    LOG_INF("payload size: %i", zb_buf_len(param));
-
-    zb_zdo_get_diag_data(g_dst_addr, &lqi, &rssi);
-    LOG_INF("lqi %hd rssi %d", lqi, rssi);
-
-    if (cmd_info.cmd_direction == ZB_ZCL_FRAME_DIRECTION_TO_CLI)
-    {
-        LOG_ERR("Unsupported \"from server\" command direction");
-    }
-    LOG_INF("< zcl_specific_cluster_cmd_handler");
-    return ZB_FALSE;
-}
-
 int main(void)
 {
     LOG_INF("Starting Zigbee R23 Light Switch example");
@@ -429,7 +391,6 @@ int main(void)
 
     /* Register handlers to identify notifications */
     ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(MY_DEVICE_ENDPOINT, identify_cb);
-    //ZB_AF_SET_ENDPOINT_HANDLER(MY_DEVICE_ENDPOINT, zcl_specific_cluster_cmd_handler);
 
     /* Start Zigbee default thread. */
     zigbee_enable();
