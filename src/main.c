@@ -1,12 +1,3 @@
-/*
- * Copyright (c) 2024 Nordic Semiconductor ASA
- *
- * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
- */
-
-/** @file
- * @brief Dimmer switch for HA profile implementation.
- */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
@@ -232,7 +223,6 @@ static void button_timer_handler(struct k_timer *timer)
 static void battery_alarm_handler(zb_bufid_t bufid)
 {
     ZB_SCHEDULE_APP_ALARM(battery_alarm_handler, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(BATTERY_INTERVAL));
-    LOG_ERR("battery rimer");
 
     uint16_t buf;
     struct adc_sequence sequence = {
@@ -245,11 +235,15 @@ static void battery_alarm_handler(zb_bufid_t bufid)
     if (err < 0) {
         LOG_ERR("Could not read (%d)", err);
     }
-    int32_t val_mv = 5 * (int32_t)buf;
+    int32_t val_mv = (int32_t)buf;
     err = adc_raw_to_millivolts_dt(&adc_channels[0], &val_mv);
     /* conversion to mV may not be supported, skip if not */
     if (err < 0) {
         LOG_ERR("value in mV not available");
+    }
+    else {
+        val_mv *= 5;
+        LOG_ERR("battery timer read value: %d", val_mv);
     }
 
     zb_uint8_t battery_attribute = val_mv / 100;
