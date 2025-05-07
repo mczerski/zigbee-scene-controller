@@ -16,11 +16,15 @@
     status = "okay";
 };
 
+&led1_green {
+    gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+};
+
 &adc {
     #address-cells = <1>;
     #size-cells = <0>;
 
-    channel@10 {
+    channel@0 {
         reg = <0>;
         zephyr,gain = "ADC_GAIN_1_2";
         zephyr,reference = "ADC_REF_INTERNAL";
@@ -30,3 +34,7 @@
         zephyr,oversampling = <8>;
     };
 };
+
+//&reg1 {
+//    regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+//};

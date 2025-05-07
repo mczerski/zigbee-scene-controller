@@ -13,6 +13,7 @@
 #include <dk_buttons_and_leds.h>
 #include <ram_pwrdn.h>
 
+#define ZB_HA_DEFINE_DEVICE_SCENE_SELECTOR
 #include <zboss_api.h>
 #include <zigbee/zigbee_app_utils.h>
 #include <zigbee/zigbee_error_handler.h>
@@ -31,9 +32,7 @@
 /* LED indicating that light switch successfully joind Zigbee network. */
 #define ZIGBEE_NETWORK_STATE_LED   DK_LED3
 /* LED used for device identification. */
-#define IDENTIFY_LED               ZIGBEE_NETWORK_STATE_LED
-/* Button ID used to enable sleepy behavior. */
-#define BUTTON_SLEEPY              DK_BTN1_MSK
+#define IDENTIFY_LED               DK_LED4
 
 /* Button to start Factory Reset */
 #define FACTORY_RESET_BUTTON       DK_BTN1_MSK
@@ -99,14 +98,6 @@ ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(
 
 /* Identify cluster attributes data */
 zb_uint16_t g_attr_identify_identify_time = ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
-/* On/Off Switch Configuration cluster attributes data */
-zb_uint8_t g_attr_on_off_switch_configuration_switch_type = 0;
-zb_uint8_t g_attr_on_off_switch_configuration_switch_actions = ZB_ZCL_ON_OFF_SWITCH_CONFIGURATION_SWITCH_ACTIONS_DEFAULT_VALUE;
-ZB_ZCL_DECLARE_ON_OFF_SWITCH_CONFIGURATION_ATTRIB_LIST(
-    on_off_switch_configuration_attr_list,
-    &g_attr_on_off_switch_configuration_switch_type,
-    &g_attr_on_off_switch_configuration_switch_actions
-);
 ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &g_attr_identify_identify_time);
 
 /* Power configuration cluster attributes data */
@@ -146,7 +137,7 @@ ZB_ZCL_DECLARE_POWER_CONFIG_BATTERY_ATTRIB_LIST_EXT(
 );
 
 /********************* Declare device **************************/
-ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(my_device_clusters, on_off_switch_configuration_attr_list, basic_attr_list, identify_attr_list, power_config_attr_list);
+ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(my_device_clusters, basic_attr_list, identify_attr_list, power_config_attr_list);
 ZB_HA_DECLARE_MY_DEVICE_EP(my_device_ep, MY_DEVICE_ENDPOINT, my_device_clusters);
 ZB_HA_DECLARE_MY_DEVICE_CTX(device_ctx, my_device_ep);
 
@@ -166,19 +157,7 @@ static void on_off_callback(zb_bufid_t buffer)
 static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
 {
     uint16_t addr = 0x0000;
-    ZB_ZCL_ON_OFF_SEND_REQ(
-        bufid,
-        addr,
-        ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-        1,
-        MY_DEVICE_ENDPOINT,
-        ZB_AF_HA_PROFILE_ID,
-        ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-        cmd_id,
-        on_off_callback
-    )
-    LOG_INF("Sent On/Off command: %d", cmd_id);
-    //ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
+    //ZB_ZCL_ON_OFF_SEND_REQ(
     //    bufid,
     //    addr,
     //    ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
@@ -186,11 +165,23 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
     //    MY_DEVICE_ENDPOINT,
     //    ZB_AF_HA_PROFILE_ID,
     //    ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-    //    on_off_callback,
-    //    0, // group id
-    //    cmd_id
+    //    cmd_id,
+    //    on_off_callback
     //)
-    //LOG_INF("Sent scene command: %d", cmd_id);
+    //LOG_INF("Sent On/Off command: %d", cmd_id);
+    ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
+        bufid,
+        addr,
+        ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+        1,
+        MY_DEVICE_ENDPOINT,
+        ZB_AF_HA_PROFILE_ID,
+        ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
+        on_off_callback,
+        0, // group id
+        cmd_id
+    )
+    LOG_INF("Sent scene command: %d", cmd_id);
 }
 
 /**@brief Callback for button events.
@@ -344,8 +335,6 @@ static void toggle_identify_led(zb_bufid_t bufid)
  */
 static void identify_cb(zb_bufid_t bufid)
 {
-    zb_ret_t zb_err_code;
-
     if (bufid) {
         LOG_INF("Identify started");
         /* Schedule a self-scheduling function that will toggle the LED. */
@@ -353,15 +342,8 @@ static void identify_cb(zb_bufid_t bufid)
     } else {
         LOG_INF("Identify stopped");
         /* Cancel the toggling function alarm and turn off LED. */
-        zb_err_code = ZB_SCHEDULE_APP_ALARM_CANCEL(toggle_identify_led, ZB_ALARM_ANY_PARAM);
-        ZVUNUSED(zb_err_code);
-
-        /* Update network status/idenitfication LED. */
-        if (ZB_JOINED()) {
-            dk_set_led_on(ZIGBEE_NETWORK_STATE_LED);
-        } else {
-            dk_set_led_off(ZIGBEE_NETWORK_STATE_LED);
-        }
+        ZB_SCHEDULE_APP_ALARM_CANCEL(toggle_identify_led, ZB_ALARM_ANY_PARAM);
+        dk_set_led_off(IDENTIFY_LED);
     }
 }
 
@@ -385,8 +367,13 @@ void zboss_signal_handler(zb_bufid_t bufid)
         /* start battery measurement timer */
         ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
         /* Call default signal handler. */
+        //zb_zdo_pim_set_long_poll_interval(100000);
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
     case ZB_ZDO_SIGNAL_LEAVE:
+        /* Call default signal handler. */
+        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
+    case ZB_COMMON_SIGNAL_CAN_SLEEP:
         /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
         break;
@@ -439,23 +426,9 @@ int main(void)
 
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
     //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
-    //zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
-
-    /* If "sleepy button" is defined, check its state during Zigbee
-     * initialization and enable sleepy behavior at device if defined button
-     * is pressed.
-     */
-#if defined BUTTON_SLEEPY
-    //TODO: sparwdzić to
-    if (dk_get_buttons() & BUTTON_SLEEPY) {
-        zigbee_configure_sleepy_behavior(true);
-    }
-#endif
-
-    /* Power off unused sections of RAM to lower device power consumption. */
-    if (IS_ENABLED(CONFIG_RAM_POWER_DOWN_LIBRARY)) {
-        power_down_unused_ram();
-    }
+    //zb_set_keepalive_timeout(ZB_SECONDS_TO_BEACON_INTERVAL(100));
+    zigbee_configure_sleepy_behavior(true);
+    power_down_unused_ram();
 
     /* Register device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
