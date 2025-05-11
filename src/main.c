@@ -21,9 +21,9 @@
  */
 #define ERASE_PERSISTENT_CONFIG    ZB_FALSE
 /* LED indicating that light switch successfully joind Zigbee network. */
-#define ZIGBEE_NETWORK_STATE_LED   DK_LED3
+#define ZIGBEE_NETWORK_STATE_LED   DK_LED1
 /* LED used for device identification. */
-#define IDENTIFY_LED               DK_LED4
+#define IDENTIFY_LED               DK_LED1
 
 /* Button to start Factory Reset */
 #define FACTORY_RESET_BUTTON       DK_BTN1_MSK

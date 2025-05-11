@@ -42,6 +42,13 @@
 		};
 	};
 
+	vcc_ext: regulator-vcc-ext {
+		compatible = "regulator-fixed";
+		regulator-name = "EXT PWR";
+		enable-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
 	aliases {
 		led0 = &led0;
 		pwm-led0 = &red_pwm_led;
@@ -51,6 +58,14 @@
 		spi = &spi2;
 		watchdog0 = &wdt0;
 	};
+};
+
+&reg0 {
+	status = "okay";
+};
+
+&reg1 {
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
 };
 
 &adc {
