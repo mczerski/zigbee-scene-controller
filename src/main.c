@@ -1,6 +1,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/sys/reboot.h>
 #include <dk_buttons_and_leds.h>
 #include <ram_pwrdn.h>
 
@@ -198,6 +199,10 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
             }
         }
     }
+    if (has_changed & DK_BTN4_MSK) {
+        NRF_POWER->GPREGRET = 0x57;
+        sys_reboot(SYS_REBOOT_COLD);
+    }
 }
 
 static void button_timer_handler(struct k_timer *timer)
@@ -384,7 +389,8 @@ int main(void)
     //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
     //zb_set_keepalive_timeout(ZB_SECONDS_TO_BEACON_INTERVAL(100));
     zigbee_configure_sleepy_behavior(true);
-    power_down_unused_ram();
+// TODO: check if makes difference, if so fix
+//    power_down_unused_ram();
 
     /* Register device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);
