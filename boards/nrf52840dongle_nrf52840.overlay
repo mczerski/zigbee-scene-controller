@@ -5,14 +5,50 @@
     zephyr,user {
         io-channels = <&adc 0>;
     };
+
+    buttons {
+        compatible = "gpio-keys";
+        button1: button_1 {
+            gpios = <&gpio0 31 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Push button switch 1";
+            zephyr,code = <2>;
+        };
+        button2: button_2 {
+            gpios = <&gpio0 29 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Push button switch 2";
+            zephyr,code = <3>;
+        };
+        button3: button_3 {
+            gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Push button switch 3";
+            zephyr,code = <4>;
+        };
+    };
+    longpress {
+        compatible = "zephyr,input-longpress";
+        input-codes = <1>, <2>, <3>, <4>;
+        short-codes = <(0x10 + 1)>, <(0x10 + 2)>, <(0x10 + 3)>, <(0x10 + 4)>;
+        long-codes = <(0x20 + 1)>, <(0x20 + 2)>, <(0x20 + 3)>, <(0x20 + 4)>;
+        long-delay-ms = <1000>;
+        status = "okay";
+    };
+    double_tap {
+        compatible = "zephyr,input-double-tap";
+        input-codes = <1>, <2>, <3>, <4>;
+        double-tap-codes = <(0x30 + 1)>, <(0x30 + 2)>, <(0x30 + 3)>, <(0x30 + 4)>;
+        double-tap-delay-ms = <250>;
+    };
+    very_longpress: very_longpress {
+        compatible = "zephyr,input-longpress";
+        input-codes = <1>, <2>, <3>, <4>;
+        long-codes = <(0x40 + 1)>, <(0x40 + 2)>, <(0x40 + 3)>, <(0x40 + 4)>;
+        long-delay-ms = <5000>;
+        status = "okay";
+    };
 };
 
 &timer2 {
     status = "okay";
-};
-
-&led1_green {
-    gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
 };
 
 &adc {
@@ -28,4 +64,8 @@
         zephyr,resolution = <14>;
         zephyr,oversampling = <8>;
     };
+};
+
+&button0 {
+    zephyr,code = <1>;
 };

@@ -1,8 +1,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
-#include <zephyr/sys/reboot.h>
-#include <dk_buttons_and_leds.h>
+#include <zephyr/drivers/led.h>
+#include <zephyr/input/input.h>
 #include <ram_pwrdn.h>
 
 #define ZB_HA_DEFINE_DEVICE_SCENE_SELECTOR
@@ -12,7 +12,6 @@
 #include <zb_nrf_platform.h>
 #include "my_device.h"
 
-#define BUTTON_MSK                 DK_BTN1_MSK  /* Scene 1 activation */
 #define MY_DEVICE_ENDPOINT         1
 #define BATTERY_INTERVAL           60000
 
@@ -21,22 +20,6 @@
  * for all network devices before running other samples.
  */
 #define ERASE_PERSISTENT_CONFIG    ZB_FALSE
-/* LED indicating that light switch successfully joind Zigbee network. */
-#define ZIGBEE_NETWORK_STATE_LED   DK_LED1
-/* LED used for device identification. */
-#define IDENTIFY_LED               DK_LED2
-
-/* Button to start Factory Reset */
-#define FACTORY_RESET_BUTTON       DK_BTN1_MSK
-
-#if !defined ZB_ED_ROLE
-#error Define ZB_ED_ROLE to compile light switch (End Device) source code.
-#endif
-
-#if !DT_NODE_EXISTS(DT_PATH(zephyr_user)) || \
-    !DT_NODE_HAS_PROP(DT_PATH(zephyr_user), io_channels)
-#error "No suitable devicetree overlay specified"
-#endif
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
@@ -47,12 +30,8 @@ static const struct adc_dt_spec adc_channels[] = {
     DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels, DT_SPEC_AND_COMMA)
 };
 
-struct buttons_context {
-    int state;
-    struct k_timer timer;
-};
-
-static struct buttons_context buttons_ctx;
+const struct device * led_dev = DEVICE_DT_GET(DT_PARENT(DT_ALIAS(led1)));
+uint32_t led_idx = DT_NODE_CHILD_IDX(DT_ALIAS(led1));
 
 /* Basic cluster attributes data */
 // TODO: use deicated macros to prepare strings
@@ -146,7 +125,7 @@ static void on_off_callback(zb_bufid_t buffer)
     zb_buf_free(buffer);
 }
 
-static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
+static void send_scene(zb_bufid_t bufid, zb_uint16_t scene_id)
 {
     uint16_t addr = 0x0000;
     ZB_ZCL_SCENES_SEND_RECALL_SCENE_REQ(
@@ -159,59 +138,36 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
         ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
         on_off_callback,
         0, // group id
-        cmd_id
+        scene_id
     )
-    LOG_INF("Sent scene command: %d", cmd_id);
+    LOG_INF("Sent scene command: 0x%x", scene_id);
 }
 
-/**@brief Callback for button events.
- *
- * @param[in]   button_state  Bitmask containing buttons state.
- * @param[in]   has_changed   Bitmask containing buttons that has
- *                            changed their state.
- */
-static void button_handler(uint32_t button_state, uint32_t has_changed)
+static void button_handler(struct input_event *evt, void *user_data)
 {
+    LOG_INF("Button event. type=%d, code=0x%x, value=%d", evt->type, evt->code, evt->value);
+
+    if (evt->type != INPUT_EV_KEY) {
+        return;
+    }
     /* Inform default signal handler about user input at the device. */
     user_input_indicate();
 
-    check_factory_reset_button(button_state, has_changed);
+    zb_uint16_t scene_type = evt->code >> 4;
 
-    if (has_changed & BUTTON_MSK) {
-        if (button_state & BUTTON_MSK) {
-            LOG_INF("Button pressed");
-            buttons_ctx.state = 0;
-            k_timer_start(&buttons_ctx.timer, K_MSEC(500), K_NO_WAIT);
+    if (
+        (scene_type == 1 && evt->value == 0) || // short press release
+        (scene_type == 2 && evt->value == 1) || // long press activation
+        (scene_type == 3 && evt->value == 0) // double press
+    ) {
+        zb_ret_t zb_err_code = zb_buf_get_out_delayed_ext(send_scene, evt->code, 0);
+        if (zb_err_code) {
+            LOG_WRN("Buffer is full");
         }
-        else if (!was_factory_reset_done()) {
-            LOG_INF("Button released");
-            k_timer_stop(&buttons_ctx.timer);
-            zb_uint16_t cmd_id = ZB_ZCL_CMD_ON_OFF_ON_ID;
-            if (buttons_ctx.state == 1) {
-                cmd_id = ZB_ZCL_CMD_ON_OFF_OFF_ID;
-            }
-            else if (buttons_ctx.state == 2) {
-                cmd_id = ZB_ZCL_CMD_ON_OFF_TOGGLE_ID;
-            }
-            zb_ret_t zb_err_code = zb_buf_get_out_delayed_ext(send_on_off, cmd_id, 0);
-            if (zb_err_code) {
-                LOG_WRN("Buffer is full");
-            }
-        }
-    }
-    if (has_changed & DK_BTN4_MSK) {
-        NRF_POWER->GPREGRET = 0x57;
-        sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
-static void button_timer_handler(struct k_timer *timer)
-{
-    if (dk_get_buttons() & BUTTON_MSK) {
-        buttons_ctx.state += 1;
-        k_timer_start(&buttons_ctx.timer, K_MSEC(1500), K_NO_WAIT);
-    }
-}
+INPUT_CALLBACK_DEFINE(NULL, button_handler, NULL);
 
 static void battery_alarm_handler(zb_bufid_t bufid)
 {
@@ -265,27 +221,6 @@ static void battery_alarm_handler(zb_bufid_t bufid)
     }
 }
 
-/**@brief Function for initializing LEDs and Buttons. */
-static void configure_gpio(void)
-{
-    int err;
-
-    err = dk_buttons_init(button_handler);
-    if (err) {
-        LOG_ERR("Cannot init buttons (err: %d)", err);
-    }
-
-    err = dk_leds_init();
-    if (err) {
-        LOG_ERR("Cannot init LEDs (err: %d)", err);
-    }
-}
-
-static void configure_timers(void)
-{
-    k_timer_init(&buttons_ctx.timer, button_timer_handler, NULL);
-}
-
 static void configure_adc(void)
 {
     int err;
@@ -304,16 +239,23 @@ static void configure_adc(void)
     }
 }
 
-/**@brief Function to toggle the identify LED.
- *
- * @param  bufid  Unused parameter, required by ZBOSS scheduler API.
- */
-static void toggle_identify_led(zb_bufid_t bufid)
+static void off_state_led(zb_uint8_t param)
+{
+    led_off(led_dev, led_idx);
+}
+
+static void blink_state_led(uint32_t ms)
+{
+    led_on(led_dev, led_idx);
+    ZB_SCHEDULE_APP_ALARM(off_state_led, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(ms));
+}
+
+static void toggle_identify_led(zb_uint8_t param)
 {
     static int blink_status;
 
-    dk_set_led(IDENTIFY_LED, (++blink_status) % 2);
-    ZB_SCHEDULE_APP_ALARM(toggle_identify_led, bufid, ZB_MILLISECONDS_TO_BEACON_INTERVAL(100));
+    led_set_brightness(led_dev, led_idx, (++blink_status) % 2);
+    ZB_SCHEDULE_APP_ALARM(toggle_identify_led, param, ZB_MILLISECONDS_TO_BEACON_INTERVAL(100));
 }
 
 /**@brief Function to handle identify notification events on the first endpoint.
@@ -325,12 +267,12 @@ static void identify_cb(zb_bufid_t bufid)
     if (bufid) {
         LOG_INF("Identify started");
         /* Schedule a self-scheduling function that will toggle the LED. */
-        ZB_SCHEDULE_APP_CALLBACK(toggle_identify_led, bufid);
+        ZB_SCHEDULE_APP_CALLBACK(toggle_identify_led, ZB_ALARM_ANY_PARAM);
     } else {
         LOG_INF("Identify stopped");
         /* Cancel the toggling function alarm and turn off LED. */
         ZB_SCHEDULE_APP_ALARM_CANCEL(toggle_identify_led, ZB_ALARM_ANY_PARAM);
-        dk_set_led_off(IDENTIFY_LED);
+        led_off(led_dev, led_idx);
     }
 }
 
@@ -343,20 +285,26 @@ void zboss_signal_handler(zb_bufid_t bufid)
 {
     zb_zdo_app_signal_hdr_t *sig_hndler = NULL;
     zb_zdo_app_signal_type_t sig = zb_get_app_signal(bufid, &sig_hndler);
-
-    /* Update network status LED. */
-    zigbee_led_status_update(bufid, ZIGBEE_NETWORK_STATE_LED);
+    zb_ret_t status = ZB_GET_APP_SIGNAL_STATUS(bufid);
 
     switch (sig) {
     case ZB_BDB_SIGNAL_DEVICE_REBOOT:
     /* fall-through */
     case ZB_BDB_SIGNAL_STEERING:
+        if (status == RET_OK) {
+            blink_state_led(200);
+        }
+        else {
+            off_state_led(0);
+        }
         /* start battery measurement timer */
         ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
-        /* Call default signal handler. */
         //zb_zdo_pim_set_long_poll_interval(100000);
+        /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
     case ZB_ZDO_SIGNAL_LEAVE:
+        off_state_led(0);
         /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
         break;
@@ -380,10 +328,7 @@ int main(void)
     LOG_INF("Starting Zigbee R23 Light Switch example");
 
     /* Initialize. */
-    configure_gpio();
-    configure_timers();
     configure_adc();
-    register_factory_reset_button(FACTORY_RESET_BUTTON);
 
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
     //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
