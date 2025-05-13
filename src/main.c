@@ -33,6 +33,17 @@ static const struct adc_dt_spec adc_channels[] = {
 const struct device * led_dev = DEVICE_DT_GET(DT_PARENT(DT_ALIAS(led1)));
 uint32_t led_idx = DT_NODE_CHILD_IDX(DT_ALIAS(led1));
 
+static void off_state_led(zb_uint8_t param)
+{
+    led_off(led_dev, led_idx);
+}
+
+static void blink_state_led(uint32_t ms)
+{
+    led_on(led_dev, led_idx);
+    ZB_SCHEDULE_APP_ALARM(off_state_led, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(ms));
+}
+
 /* Basic cluster attributes data */
 // TODO: use deicated macros to prepare strings
 zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
@@ -112,11 +123,11 @@ ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(my_device_clusters, basic_attr_list, identi
 ZB_HA_DECLARE_MY_DEVICE_EP(my_device_ep, MY_DEVICE_ENDPOINT, my_device_clusters);
 ZB_HA_DECLARE_MY_DEVICE_CTX(device_ctx, my_device_ep);
 
-static void on_off_callback(zb_bufid_t buffer)
+static void scene_callback(zb_bufid_t buffer)
 {
     zb_uint8_t status = zb_buf_get_status(buffer);
 
-    LOG_INF("on_off_callback %d", buffer);
+    LOG_INF("scene_callback %d", buffer);
 
     LOG_INF("buffer %d", buffer);
     LOG_INF("status %d", status);
@@ -136,11 +147,12 @@ static void send_scene(zb_bufid_t bufid, zb_uint16_t scene_id)
         MY_DEVICE_ENDPOINT,
         ZB_AF_HA_PROFILE_ID,
         ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-        on_off_callback,
+        scene_callback,
         0, // group id
         scene_id
     )
     LOG_INF("Sent scene command: 0x%x", scene_id);
+    blink_state_led(200);
 }
 
 static void button_handler(struct input_event *evt, void *user_data)
@@ -156,9 +168,9 @@ static void button_handler(struct input_event *evt, void *user_data)
     zb_uint16_t scene_type = evt->code >> 4;
 
     if (
-        (scene_type == 1 && evt->value == 0) || // short press release
         (scene_type == 2 && evt->value == 1) || // long press activation
-        (scene_type == 3 && evt->value == 0) // double press
+        (scene_type == 3 && evt->value == 0) || // single press
+        (scene_type == 4 && evt->value == 0) // double press
     ) {
         zb_ret_t zb_err_code = zb_buf_get_out_delayed_ext(send_scene, evt->code, 0);
         if (zb_err_code) {
@@ -237,17 +249,6 @@ static void configure_adc(void)
             return;
         }
     }
-}
-
-static void off_state_led(zb_uint8_t param)
-{
-    led_off(led_dev, led_idx);
-}
-
-static void blink_state_led(uint32_t ms)
-{
-    led_on(led_dev, led_idx);
-    ZB_SCHEDULE_APP_ALARM(off_state_led, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(ms));
 }
 
 static void toggle_identify_led(zb_uint8_t param)

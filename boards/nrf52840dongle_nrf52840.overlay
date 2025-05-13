@@ -35,13 +35,14 @@
     double_tap {
         compatible = "zephyr,input-double-tap";
         input-codes = <1>, <2>, <3>, <4>;
-        double-tap-codes = <(0x30 + 1)>, <(0x30 + 2)>, <(0x30 + 3)>, <(0x30 + 4)>;
+        single-tap-codes = <(0x30 + 1)>, <(0x30 + 2)>, <(0x30 + 3)>, <(0x30 + 4)>;
+        double-tap-codes = <(0x40 + 1)>, <(0x40 + 2)>, <(0x40 + 3)>, <(0x40 + 4)>;
         double-tap-delay-ms = <250>;
     };
     very_longpress: very_longpress {
         compatible = "zephyr,input-longpress";
         input-codes = <1>, <2>, <3>, <4>;
-        long-codes = <(0x40 + 1)>, <(0x40 + 2)>, <(0x40 + 3)>, <(0x40 + 4)>;
+        long-codes = <(0xF0 + 1)>, <(0xF0 + 2)>, <(0xF0 + 3)>, <(0xF0 + 4)>;
         long-delay-ms = <5000>;
         status = "okay";
     };
