@@ -1,6 +1,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc-v3.h>
 #include <zephyr/drivers/led.h>
 #include <zephyr/input/input.h>
 #include <ram_pwrdn.h>
@@ -185,7 +186,7 @@ static void battery_alarm_handler(zb_bufid_t bufid)
 {
     ZB_SCHEDULE_APP_ALARM(battery_alarm_handler, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(BATTERY_INTERVAL));
 
-    uint16_t buf;
+    int16_t buf;
     struct adc_sequence sequence = {
         .buffer = &buf,
         /* buffer size in bytes, not number of samples */
@@ -196,16 +197,12 @@ static void battery_alarm_handler(zb_bufid_t bufid)
     if (err < 0) {
         LOG_ERR("Could not read (%d)", err);
     }
-    int32_t val_mv = (int32_t)buf;
-    err = adc_raw_to_millivolts_dt(&adc_channels[0], &val_mv);
-    /* conversion to mV may not be supported, skip if not */
-    if (err < 0) {
-        LOG_ERR("value in mV not available");
-    }
-    else {
+    int32_t val_mv = buf;
+    adc_raw_to_millivolts_dt(&adc_channels[0], &val_mv);
+    if (adc_channels[0].channel_cfg.input_positive == NRF_SAADC_VDDHDIV5) {
         val_mv *= 5;
-        LOG_ERR("battery timer read value: %d", val_mv);
     }
+    LOG_INF("battery read value: %d", val_mv);
 
     zb_uint8_t battery_attribute = val_mv / 100;
     if (zb_zcl_set_attr_val(
@@ -219,7 +216,7 @@ static void battery_alarm_handler(zb_bufid_t bufid)
     {
         LOG_ERR("Failed to set ZCL attribute");
     }
-    battery_attribute = 200 * val_mv / 5200;
+    battery_attribute = 200 * val_mv / (adc_channels[0].channel_cfg.input_positive == NRF_SAADC_VDDHDIV5 ? 4200 : 3200);
     if (zb_zcl_set_attr_val(
             MY_DEVICE_ENDPOINT,
             ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
