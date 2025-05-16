@@ -133,6 +133,9 @@ static void scene_callback(zb_bufid_t buffer)
     LOG_INF("buffer %d", buffer);
     LOG_INF("status %d", status);
 
+    if (status != RET_OK) {
+        blink_state_led(500);
+    }
     /* Free the buffer */
     zb_buf_free(buffer);
 }
@@ -182,7 +185,7 @@ static void button_handler(struct input_event *evt, void *user_data)
 
 INPUT_CALLBACK_DEFINE(NULL, button_handler, NULL);
 
-static void battery_alarm_handler(zb_bufid_t bufid)
+static void battery_alarm_handler(zb_uint8_t param)
 {
     ZB_SCHEDULE_APP_ALARM(battery_alarm_handler, ZB_ALARM_ANY_PARAM, ZB_MILLISECONDS_TO_BEACON_INTERVAL(BATTERY_INTERVAL));
 
@@ -230,6 +233,72 @@ static void battery_alarm_handler(zb_bufid_t bufid)
     }
 }
 
+static void join_status_led(zb_uint8_t interval_s)
+{
+    ZB_SCHEDULE_APP_ALARM(join_status_led, interval_s, ZB_SECONDS_TO_BEACON_INTERVAL(interval_s));
+    blink_state_led(100);
+}
+
+/**@brief Zigbee stack event handler.
+ *
+ * @param[in]   bufid   Reference to the Zigbee stack buffer
+ *                      used to pass signal.
+ */
+void zboss_signal_handler(zb_bufid_t bufid)
+{
+    zb_zdo_app_signal_hdr_t *sig_hndler = NULL;
+    zb_zdo_app_signal_type_t sig = zb_get_app_signal(bufid, &sig_hndler);
+    zb_ret_t status = ZB_GET_APP_SIGNAL_STATUS(bufid);
+    LOG_INF("ZBOSS signal handler, sig: %d, status: %d, joined: %d", sig, status, ZB_JOINED());
+
+    switch (sig) {
+    case ZB_BDB_SIGNAL_DEVICE_REBOOT:
+    /* fall-through */
+    case ZB_BDB_SIGNAL_STEERING:
+        if (status == RET_OK) {
+            blink_state_led(200);
+        }
+        else {
+            off_state_led(0);
+        }
+        /* start battery measurement timer */
+        ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
+        //zb_zdo_pim_set_long_poll_interval(100000);
+        /* Call default signal handler. */
+        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
+    case ZB_ZDO_SIGNAL_LEAVE:
+        off_state_led(0);
+        /* Call default signal handler. */
+        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
+    case ZB_COMMON_SIGNAL_CAN_SLEEP:
+        /* Call default signal handler. */
+        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
+    default:
+        /* Call default signal handler. */
+        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
+        break;
+    }
+
+    zb_time_t timeout;
+    if (sig != ZB_COMMON_SIGNAL_CAN_SLEEP) {
+        if (ZB_JOINED()) {
+            ZB_SCHEDULE_APP_ALARM_CANCEL(join_status_led, ZB_ALARM_ANY_PARAM);
+        }
+        else {
+            status = ZB_SCHEDULE_GET_ALARM_TIME(join_status_led, ZB_ALARM_ANY_PARAM, &timeout);
+            if (status != RET_OK)
+                ZB_SCHEDULE_APP_CALLBACK(join_status_led, 5);
+        }
+    }
+
+    if (bufid) {
+        zb_buf_free(bufid);
+    }
+}
+
 static void configure_adc(void)
 {
     int err;
@@ -274,65 +343,18 @@ static void identify_cb(zb_bufid_t bufid)
     }
 }
 
-/**@brief Zigbee stack event handler.
- *
- * @param[in]   bufid   Reference to the Zigbee stack buffer
- *                      used to pass signal.
- */
-void zboss_signal_handler(zb_bufid_t bufid)
-{
-    zb_zdo_app_signal_hdr_t *sig_hndler = NULL;
-    zb_zdo_app_signal_type_t sig = zb_get_app_signal(bufid, &sig_hndler);
-    zb_ret_t status = ZB_GET_APP_SIGNAL_STATUS(bufid);
-
-    switch (sig) {
-    case ZB_BDB_SIGNAL_DEVICE_REBOOT:
-    /* fall-through */
-    case ZB_BDB_SIGNAL_STEERING:
-        if (status == RET_OK) {
-            blink_state_led(200);
-        }
-        else {
-            off_state_led(0);
-        }
-        /* start battery measurement timer */
-        ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
-        //zb_zdo_pim_set_long_poll_interval(100000);
-        /* Call default signal handler. */
-        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
-        break;
-    case ZB_ZDO_SIGNAL_LEAVE:
-        off_state_led(0);
-        /* Call default signal handler. */
-        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
-        break;
-    case ZB_COMMON_SIGNAL_CAN_SLEEP:
-        /* Call default signal handler. */
-        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
-        break;
-    default:
-        /* Call default signal handler. */
-        ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
-        break;
-    }
-
-    if (bufid) {
-        zb_buf_free(bufid);
-    }
-}
-
 int main(void)
 {
-    LOG_INF("Starting Zigbee R23 Light Switch example");
+    LOG_INF("Starting Zigbee R23 Scene Switch");
 
     /* Initialize. */
     configure_adc();
 
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
-    //zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
-    //zb_set_keepalive_timeout(ZB_SECONDS_TO_BEACON_INTERVAL(100));
+    zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
+    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
     zigbee_configure_sleepy_behavior(true);
-// TODO: check if makes difference, if so fix
+// TODO: check if makes difference, if so fix problem with reboot
 //    power_down_unused_ram();
 
     /* Register device context (endpoints). */
@@ -344,7 +366,7 @@ int main(void)
     /* Start Zigbee default thread. */
     zigbee_enable();
 
-    LOG_INF("Zigbee R23 Light Switch example started");
+    LOG_INF("Zigbee R23 Scene Switch started");
 
     k_sleep(K_FOREVER);
     return 0;
