@@ -18,6 +18,7 @@ static void secret_button_handler(struct input_event *evt, void *user_data)
         return;
     }
     if (evt->type == INPUT_EV_KEY && evt->code == 0xF1 && evt->value == 1) {
+        // TODO: use zephyr driver
         NRF_POWER->GPREGRET = 0x57;
         power_up_unused_ram();
         sys_reboot(SYS_REBOOT_COLD);
