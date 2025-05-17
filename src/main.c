@@ -263,7 +263,8 @@ void zboss_signal_handler(zb_bufid_t bufid)
         }
         /* start battery measurement timer */
         ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
-        //zb_zdo_pim_set_long_poll_interval(100000);
+        // TODO: greater vlues here do not play nice with zigbee2mqtt, should it be nogotiated or smth ? 
+        zb_zdo_pim_set_long_poll_interval(900000);
         /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
         break;
@@ -351,8 +352,8 @@ int main(void)
     configure_adc();
 
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
-    zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
-    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(3000));
+    zb_set_ed_timeout(ED_AGING_TIMEOUT_256MIN);
+    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(900000));
     zigbee_configure_sleepy_behavior(true);
 // TODO: check if makes difference, if so fix problem with reboot
 //    power_down_unused_ram();
