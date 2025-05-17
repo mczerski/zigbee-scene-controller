@@ -1,7 +1,4 @@
 / {
-    chosen {
-        ncs,zigbee-timer = &timer2;
-    };
     zephyr,user {
         io-channels = <&adc 0>;
     };
@@ -67,10 +64,6 @@
     };
 };
 
-&timer2 {
-    status = "okay";
-};
-
 &adc {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -84,4 +77,12 @@
         zephyr,resolution = <14>;
         zephyr,oversampling = <8>;
     };
+};
+
+&gpio0 {
+    sense-edge-mask = <0xffffffff>;
+};
+
+&gpio1 {
+    sense-edge-mask = <0xffffffff>;
 };
