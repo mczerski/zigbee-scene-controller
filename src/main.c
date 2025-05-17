@@ -355,8 +355,7 @@ int main(void)
     zb_set_ed_timeout(ED_AGING_TIMEOUT_256MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(900000));
     zigbee_configure_sleepy_behavior(true);
-// TODO: check if makes difference, if so fix problem with reboot
-//    power_down_unused_ram();
+    power_down_unused_ram();
 
     /* Register device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(&device_ctx);

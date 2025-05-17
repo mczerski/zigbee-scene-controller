@@ -1,6 +1,7 @@
 #include <zephyr/input/input.h>
 #include <zephyr/sys/reboot.h>
 #include <zboss_api.h>
+#include <ram_pwrdn.h>
 
 static void secret_button_handler(struct input_event *evt, void *user_data)
 {
@@ -18,6 +19,7 @@ static void secret_button_handler(struct input_event *evt, void *user_data)
     }
     if (evt->type == INPUT_EV_KEY && evt->code == 0xF1 && evt->value == 1) {
         NRF_POWER->GPREGRET = 0x57;
+        power_up_unused_ram();
         sys_reboot(SYS_REBOOT_COLD);
         return;
     }
