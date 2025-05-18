@@ -8,8 +8,13 @@
 
 LOG_MODULE_REGISTER(button, LOG_LEVEL_INF);
 
+static int pressed_buttons = 0;
+
 static void continous_press_timer(zb_uint8_t scene_id)
 {
+    if (pressed_buttons > 1) {
+        return;
+    }
     ZB_SCHEDULE_APP_ALARM(continous_press_timer, scene_id, ZB_MILLISECONDS_TO_BEACON_INTERVAL(LONG_PRESS_INTERVAL));
     send_scene(scene_id);
 }
@@ -24,6 +29,20 @@ static void button_handler(struct input_event *evt, void *user_data)
     uint16_t scene_id = 0;
 
     uint16_t scene_type = evt->code >> 4;
+    // do not trigger on multiple keys
+    if (scene_type == 0 && evt->value == 1) {
+        pressed_buttons++;
+    }
+    else if (scene_type == 0 && evt->value == 0) {
+        pressed_buttons = MAX(pressed_buttons - 1, 0);
+    }
+    if (evt->value == 1 && pressed_buttons > 1) {
+        return;
+    }
+    if (evt->value == 0 && pressed_buttons > 0) {
+        return;
+    }
+
     if (
         (scene_type == 2 && evt->value == 1) || // long press activation
         (scene_type == 3 && evt->value == 0) || // single press
