@@ -38,8 +38,11 @@ void battery_alarm_handler(uint8_t)
     }
     LOG_INF("battery read value: %d", val_mv);
 
-    float level = val_mv / (adc_channels[0].channel_cfg.input_positive == NRF_SAADC_VDDHDIV5 ? 4200 : 3200);
-    set_battery_state(val_mv, level);
+    int32_t max_mv = adc_channels[0].channel_cfg.input_positive == NRF_SAADC_VDDHDIV5 ? 4200 : 3200;
+    int32_t min_mv = adc_channels[0].channel_cfg.input_positive == NRF_SAADC_VDDHDIV5 ? 3000 : 2000;
+    // decy-percents
+    int32_t level_dp = 1000 * MAX(val_mv - min_mv, 0) / (max_mv - min_mv);
+    set_battery_state(val_mv, level_dp);
 }
 
 void configure_battery(void)

@@ -261,8 +261,9 @@ void configure_zigbee(void)
     zigbee_enable();
 }
 
-void set_battery_state(uint32_t battery_voltage_mv, float battery_level)
+void set_battery_state(int32_t battery_voltage_mv, int32_t battery_level_dp)
 {
+    // milli volts to decy volts
     zb_uint8_t battery_attribute = battery_voltage_mv / 100;
     if (zb_zcl_set_attr_val(
             MY_DEVICE_ENDPOINT,
@@ -275,7 +276,8 @@ void set_battery_state(uint32_t battery_voltage_mv, float battery_level)
     {
         LOG_ERR("Failed to set ZCL attribute");
     }
-    battery_attribute = battery_level * 2;
+    // decy percents to half percents
+    battery_attribute = battery_level_dp / 5;
     if (zb_zcl_set_attr_val(
             MY_DEVICE_ENDPOINT,
             ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
