@@ -16,6 +16,7 @@
  * for all network devices before running other samples.
  */
 #define ERASE_PERSISTENT_CONFIG    ZB_FALSE
+#define RESEND_THRESHOLD_S         10
 
 LOG_MODULE_REGISTER(zigbee, LOG_LEVEL_INF);
 
@@ -98,6 +99,10 @@ ZB_HA_DECLARE_MY_DEVICE_CLUSTER_LIST(my_device_clusters, basic_attr_list, identi
 ZB_HA_DECLARE_MY_DEVICE_EP(my_device_ep, MY_DEVICE_ENDPOINT, my_device_clusters);
 ZB_HA_DECLARE_MY_DEVICE_CTX(device_ctx, my_device_ep);
 
+static zb_bool_t g_scene_failed = ZB_FALSE;
+static zb_uint16_t g_scene_id = 0;
+static zb_time_t g_failure_timestamp = 0;
+
 static void scene_callback(zb_bufid_t buffer)
 {
     zb_uint8_t status = zb_buf_get_status(buffer);
@@ -109,6 +114,7 @@ static void scene_callback(zb_bufid_t buffer)
 
     if (status != RET_OK) {
         blink_state_led(50, 200, 2);
+        g_scene_failed = ZB_TRUE;
     }
     else {
         blink_state_led(200, 0, 0);
@@ -131,7 +137,7 @@ static void do_send_scene(zb_bufid_t bufid, zb_uint16_t scene_id)
         scene_callback,
         0, // group id
         scene_id
-    )
+    );
     LOG_INF("Sent scene command: 0x%x", scene_id);
 }
 
@@ -144,6 +150,9 @@ void send_scene(uint16_t scene_id)
         return;
     }
 
+    g_scene_failed = ZB_FALSE;
+    g_scene_id = scene_id;
+    g_failure_timestamp = ZB_TIMER_GET();
     zb_ret_t zb_err_code = zb_buf_get_out_delayed_ext(do_send_scene, scene_id, 0);
     if (zb_err_code) {
         LOG_WRN("Buffer is full");
@@ -153,7 +162,7 @@ void send_scene(uint16_t scene_id)
 static void join_status_led(zb_uint8_t interval_s)
 {
     ZB_SCHEDULE_APP_ALARM(join_status_led, interval_s, ZB_SECONDS_TO_BEACON_INTERVAL(interval_s));
-    blink_state_led(50, 0, 0);
+    blink_state_led(50, 200, 2);
 }
 
 /**@brief Zigbee stack event handler.
@@ -204,6 +213,10 @@ void zboss_signal_handler(zb_bufid_t bufid)
     if (sig != ZB_COMMON_SIGNAL_CAN_SLEEP) {
         if (ZB_JOINED()) {
             ZB_SCHEDULE_APP_ALARM_CANCEL(join_status_led, ZB_ALARM_ANY_PARAM);
+            if (g_scene_failed && !ZB_TIME_GE(ZB_TIMER_GET(), ZB_TIME_ADD(g_failure_timestamp, ZB_TIME_ONE_SECOND * RESEND_THRESHOLD_S))) {
+                LOG_INF("Retrying scene command 0x%x", g_scene_id);
+                send_scene(g_scene_id);
+            }
         }
         else {
             status = ZB_SCHEDULE_GET_ALARM_TIME(join_status_led, ZB_ALARM_ANY_PARAM, &timeout);
