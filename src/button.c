@@ -12,7 +12,7 @@ static int pressed_buttons = 0;
 
 static void continous_press_timer(zb_uint8_t scene_id)
 {
-    if (pressed_buttons > 1) {
+    if (__builtin_popcount(pressed_buttons) > 1) {
         return;
     }
     ZB_SCHEDULE_APP_ALARM(continous_press_timer, scene_id, ZB_MILLISECONDS_TO_BEACON_INTERVAL(LONG_PRESS_INTERVAL));
@@ -26,23 +26,24 @@ static void button_handler(struct input_event *evt, void *user_data)
     if (evt->type != INPUT_EV_KEY) {
         return;
     }
-    uint16_t scene_id = 0;
-
     uint16_t scene_type = evt->code >> 4;
+    uint8_t button = evt->code & 0xF;
+    bool block = false;
     // do not trigger on multiple keys
     if (scene_type == 0 && evt->value == 1) {
-        pressed_buttons++;
+        pressed_buttons |= (1 << (button - 1));
     }
-    else if (scene_type == 0 && evt->value == 0) {
-        pressed_buttons = MAX(pressed_buttons - 1, 0);
+    if (__builtin_popcount(pressed_buttons) > 1) {
+        block = true;
     }
-    if (evt->value == 1 && pressed_buttons > 1) {
-        return;
+    if (scene_type == 0 && evt->value == 0) {
+        pressed_buttons &= ~(1 << (button - 1));
     }
-    if (evt->value == 0 && pressed_buttons > 0) {
+    if (block) {
         return;
     }
 
+    uint16_t scene_id = 0;
     if (
         (scene_type == 2 && evt->value == 1) || // long press activation
         (scene_type == 3 && evt->value == 0) || // single press

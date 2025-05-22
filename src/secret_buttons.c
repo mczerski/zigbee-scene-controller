@@ -24,6 +24,10 @@ static void secret_button_handler(struct input_event *evt, void *user_data)
     }
     if (first_reset_pressed && second_reset_pressed) {
         LOG_INF("Reseting network configuration");
+        uint32_t channel_mask = 0x7FFF800;
+        zb_set_bdb_primary_channel_set(channel_mask);
+        zb_set_bdb_secondary_channel_set(channel_mask);
+        zb_set_channel_mask(channel_mask);
         ZB_SCHEDULE_APP_CALLBACK(zb_bdb_reset_via_local_action, 0);
         return;
     }

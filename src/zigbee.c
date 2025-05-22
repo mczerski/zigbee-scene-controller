@@ -183,14 +183,18 @@ void zboss_signal_handler(zb_bufid_t bufid)
     case ZB_BDB_SIGNAL_STEERING:
         if (status == RET_OK) {
             blink_state_led(200, 0, 0);
+            /* start battery measurement timer */
+            ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
+            // TODO: greater values here do not play nice with zigbee2mqtt, should it be nogotiated or smth ? 
+            zb_zdo_pim_set_long_poll_interval(900000);
+            uint32_t channel_mask = 1 << zb_get_current_channel();
+            zb_set_bdb_primary_channel_set(channel_mask);
+            zb_set_bdb_secondary_channel_set(channel_mask);
+            zb_set_channel_mask(channel_mask);
         }
         else {
             off_state_led(0);
         }
-        /* start battery measurement timer */
-        ZB_SCHEDULE_APP_CALLBACK(battery_alarm_handler, ZB_ALARM_ANY_PARAM);
-        // TODO: greater vlues here do not play nice with zigbee2mqtt, should it be nogotiated or smth ? 
-        zb_zdo_pim_set_long_poll_interval(900000);
         /* Call default signal handler. */
         ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
         break;
