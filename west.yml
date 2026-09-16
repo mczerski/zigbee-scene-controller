@@ -7,6 +7,21 @@ manifest:
       repo-path: ncs-zigbee
       remote: ncs
       revision: v0.4.0
-      import: true
+      import:
+        name-allowlist:
+          # Core repositories
+          - nrf
+          - zephyr
+          # Zephyr modules
+          - cmsis
+          - hal_nordic
+          - picolibc
+          #- zcbor               # used by MCUboot serial recovery / mcumgr
+          # Crypto
+          - mbedtls
+          - oberon-psa-crypto
+          - nrfxlib
+          # Bootloader
+          #- mcuboot
   self:
-    path: project
+    path: zigbee-scene-controller

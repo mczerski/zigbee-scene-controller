@@ -2,6 +2,7 @@
 #include <zephyr/input/input.h>
 #include <zboss_api.h>
 #include "zigbee.h"
+#include "scene_codes.h"
 
 
 #define LONG_PRESS_INTERVAL 1000
@@ -26,40 +27,39 @@ static void button_handler(struct input_event *evt, void *user_data)
     if (evt->type != INPUT_EV_KEY) {
         return;
     }
-    uint16_t scene_type = evt->code >> 4;
-    uint8_t button = evt->code & 0xF;
+    uint16_t scene_type = evt->code >> SCENE_TYPE_SHIFT;
+    uint8_t button = evt->code & BUTTON_MASK;
     bool block = false;
     // do not trigger on multiple keys
-    if (scene_type == 0 && evt->value == 1) {
+    if (scene_type == SCENE_TYPE_KEY && evt->value == BUTTON_PRESSED) {
         pressed_buttons |= (1 << (button - 1));
     }
     if (__builtin_popcount(pressed_buttons) > 1) {
         block = true;
     }
-    if (scene_type == 0 && evt->value == 0) {
+    if (scene_type == SCENE_TYPE_KEY && evt->value == BUTTON_RELEASED) {
         pressed_buttons &= ~(1 << (button - 1));
     }
     if (block) {
         return;
     }
 
-    uint16_t scene_id = 0;
+    uint16_t scene_id = SCENE_NONE;
     if (
-        (scene_type == 2 && evt->value == 1) || // long press activation
-        (scene_type == 3 && evt->value == 0) || // single press
-        (scene_type == 4 && evt->value == 0) // double press
+        (scene_type == SCENE_TYPE_LONG && evt->value == BUTTON_PRESSED) || // long press activation
+        (scene_type == SCENE_TYPE_SINGLE && evt->value == BUTTON_RELEASED) || // single press
+        (scene_type == SCENE_TYPE_DOUBLE && evt->value == BUTTON_RELEASED) // double press
     ) {
         scene_id = evt->code;
-        if (scene_type == 2 && evt->value == 1) {
+        if (scene_type == SCENE_TYPE_LONG && evt->value == BUTTON_PRESSED) {
             ZB_SCHEDULE_APP_ALARM(
                 continous_press_timer,
-                (5 << 4) | (scene_id & 0xF),
+                SCENE_CODE(SCENE_TYPE_REPEAT, scene_id & BUTTON_MASK),
                 ZB_MILLISECONDS_TO_BEACON_INTERVAL(LONG_PRESS_INTERVAL)
             );
         }
     }
-    else if (scene_type == 2 && evt->value == 0) // long press deactivation
-    {
+    else if (scene_type == SCENE_TYPE_LONG && evt->value == BUTTON_RELEASED) {
         ZB_SCHEDULE_APP_ALARM_CANCEL(continous_press_timer, ZB_ALARM_ANY_PARAM);
     }
 
