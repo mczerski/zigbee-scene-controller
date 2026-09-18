@@ -6,14 +6,14 @@ manifest:
     - name: ncs-zigbee
       repo-path: ncs-zigbee
       remote: ncs
-      revision: v0.4.0
+      revision: v1.4.0
       import:
         name-allowlist:
           # Core repositories
           - nrf
           - zephyr
           # Zephyr modules
-          - cmsis
+          - cmsis_6
           - hal_nordic
           - picolibc
           #- zcbor               # used by MCUboot serial recovery / mcumgr

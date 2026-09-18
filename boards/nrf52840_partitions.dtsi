@@ -1,0 +1,43 @@
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		slot0_partition: partition@1000 {
+			label = "image-0";
+			reg = <0x00001000 0x000d6000>;
+		};
+
+		zboss_nvram: partition@d7000 {
+			compatible = "zephyr,mapped-partition";
+			label = "zboss-nvram";
+			reg = <0x000d7000 0x00008000>;
+		};
+
+		zboss_product_config: partition@df000 {
+			compatible = "zephyr,mapped-partition";
+			label = "zboss-product-config";
+			reg = <0x000df000 0x00001000>;
+		};
+	};
+};
+
+/* Recreated rather than patched in place: overriding only the reg of
+ * memory@20000000 leaves the node name disagreeing with its unit address,
+ * which dtc reports as a simple_bus_reg warning.
+ */
+/delete-node/ &sram0;
+
+/ {
+	soc {
+		sram0: memory@20000400 {
+			compatible = "mmio-sram";
+			reg = <0x20000400 0x0003fc00>;
+			ranges = <0x0 0x20000400 0x0003fc00>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+		};
+	};
+};

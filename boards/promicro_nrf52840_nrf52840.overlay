@@ -1,6 +1,14 @@
+#include "nrf52840_partitions.dtsi"
+
 / {
     zephyr,user {
         io-channels = <&adc 0>;
+    };
+    vcc_ext: regulator-vcc-ext {
+        compatible = "regulator-fixed";
+        regulator-name = "EXT PWR";
+        enable-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+        status = "okay";
     };
     leds {
         compatible = "gpio-leds";
@@ -39,6 +47,7 @@
         sw2 = &button2;
         sw3 = &button3;
         mcuboot-button0 = &button0;
+        bootloader-led0 = &led0;
     };
     longpress {
         compatible = "zephyr,input-longpress";
@@ -51,7 +60,7 @@
     double_tap {
         compatible = "zephyr,input-double-tap";
         input-codes = <1>, <2>, <3>, <4>;
-        //single-tap-codes = <(0x30 + 1)>, <(0x30 + 2)>, <(0x30 + 3)>, <(0x30 + 4)>;
+        single-tap-codes = <(0x30 + 1)>, <(0x30 + 2)>, <(0x30 + 3)>, <(0x30 + 4)>;
         double-tap-codes = <(0x40 + 1)>, <(0x40 + 2)>, <(0x40 + 3)>, <(0x40 + 4)>;
         double-tap-delay-ms = <250>;
     };
@@ -77,6 +86,14 @@
         zephyr,resolution = <14>;
         zephyr,oversampling = <8>;
     };
+};
+
+&reg0 {
+    status = "okay";
+};
+
+&reg1 {
+    regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
 };
 
 &gpio0 {

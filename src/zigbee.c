@@ -2,7 +2,6 @@
 #include "battery.h"
 #include "my_device.h"
 #include <zephyr/logging/log.h>
-#define ZB_HA_DEFINE_DEVICE_SCENE_SELECTOR
 #include <zboss_api.h>
 #include <zigbee/zigbee_error_handler.h>
 #include <zigbee/zigbee_app_utils.h>
@@ -49,12 +48,12 @@ zb_uint8_t g_attr_basic_stack_version = (ZBOSS_MAJOR << 4) | ZBOSS_MINOR;
 zb_uint8_t g_attr_basic_hw_version = (0 << 4) | 1;
 zb_char_t g_attr_basic_manufacturer_name[] = "\x0d" "Marek Czerski";
 zb_char_t g_attr_basic_model_identifier[] = "\x10" "Scene controller";
-zb_char_t g_attr_basic_date_code[] = "\x08" "20250503";
+zb_char_t g_attr_basic_date_code[] = "\x08" "20260917";
 zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_BATTERY;
 zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
 // TODO: generate version with cmake
-zb_char_t g_attr_sw_build_id[] = "\x07" "9dff6ce";
+zb_char_t g_attr_sw_build_id[] = "\x07" "188a339";
 
 /* Define 'bat_num' as empty in order to declare default battery set attributes. */
 /* According to Table 3-17 of ZCL specification, defining 'bat_num' as 2 or 3 allows */

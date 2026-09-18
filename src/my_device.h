@@ -56,7 +56,7 @@
         ep_id,                                                                                \
         ZB_AF_HA_PROFILE_ID,                                                                  \
         ZB_HA_SCENE_SELECTOR_DEVICE_ID,                                                       \
-        ZB_HA_DEVICE_VER_SCENE_SELECTOR,                                                      \
+        0,                                                                                    \
         0,                                                                                    \
         in_clust_num,                                                                         \
         out_clust_num,                                                                        \

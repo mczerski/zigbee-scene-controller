@@ -1,6 +1,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/adc.h>
-#include <zephyr/dt-bindings/adc/nrf-saadc-v3.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
 #include <zboss_api.h>
 #include "zigbee.h"
 
