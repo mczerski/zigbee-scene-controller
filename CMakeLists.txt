@@ -51,3 +51,7 @@ target_sources(app PRIVATE
   src/button.c
   src/secret_buttons.c
 )
+
+if(NOT CONFIG_USB_DEVICE_STACK AND NOT CONFIG_USB_DEVICE_STACK_NEXT)
+  target_sources(app PRIVATE src/usbd_reset.c)
+endif()
