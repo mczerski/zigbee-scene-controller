@@ -1,6 +1,7 @@
 #include "led.h"
 #include "battery.h"
 #include "my_device.h"
+#include <string.h>
 #include <zephyr/logging/log.h>
 #include <zboss_api.h>
 #include <zigbee/zigbee_error_handler.h>
@@ -38,22 +39,29 @@
 #define ZCL_LEVEL_UNIT_DP          5
 #define BATTERY_RATED_VOLTAGE_MV   3700
 
+/* ZCL character strings are stored as a length byte followed by the characters,
+ * ZCL limits DateCode and SWBuildID to 16 characters. */
+#define DATE_CODE_LEN              8
+#define SW_BUILD_ID_MAX_LEN        16
+
 LOG_MODULE_REGISTER(zigbee, LOG_LEVEL_INF);
 
 /* Basic cluster attributes data */
 // TODO: use deicated macros to prepare strings
 zb_uint8_t g_attr_basic_zcl_version = ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
-zb_uint8_t g_attr_basic_application_version = (0 << 4) | 1;
+zb_uint8_t g_attr_basic_application_version =
+    ((FW_VERSION_MAJOR & 0x0f) << 4) | (FW_VERSION_MINOR & 0x0f);
 zb_uint8_t g_attr_basic_stack_version = (ZBOSS_MAJOR << 4) | ZBOSS_MINOR;
 zb_uint8_t g_attr_basic_hw_version = (0 << 4) | 1;
 zb_char_t g_attr_basic_manufacturer_name[] = "\x0d" "Marek Czerski";
 zb_char_t g_attr_basic_model_identifier[] = "\x10" "Scene controller";
-zb_char_t g_attr_basic_date_code[] = "\x08" "20260917";
 zb_uint8_t g_attr_basic_power_source = ZB_ZCL_BASIC_POWER_SOURCE_BATTERY;
 zb_char_t g_attr_basic_location_description[] = ZB_ZCL_BASIC_LOCATION_DESCRIPTION_DEFAULT_VALUE;
 zb_uint8_t g_attr_basic_physical_environment = ZB_ZCL_BASIC_PHYSICAL_ENVIRONMENT_DEFAULT_VALUE;
-// TODO: generate version with cmake
-zb_char_t g_attr_sw_build_id[] = "\x07" "188a339";
+/* Taken from the last vX.Y.Z tag, only major and minor fit in the 8 bit attribute */
+/* Filled in by init_version_attributes() */
+zb_char_t g_attr_basic_date_code[1 + DATE_CODE_LEN];
+zb_char_t g_attr_sw_build_id[1 + SW_BUILD_ID_MAX_LEN];
 
 /* Define 'bat_num' as empty in order to declare default battery set attributes. */
 /* According to Table 3-17 of ZCL specification, defining 'bat_num' as 2 or 3 allows */
@@ -270,8 +278,38 @@ static void identify_cb(zb_bufid_t bufid)
     }
 }
 
+/* Both strings are known at compile time, all that is left to do is to put the
+ * ZCL length byte in front of them. */
+static void init_version_attributes(void)
+{
+    const char *commit_date = FW_COMMIT_DATE;
+    const char *full_version = FW_VERSION_FULL;
+    size_t full_version_len = strlen(full_version);
+
+    if (strlen(commit_date) == DATE_CODE_LEN) {
+        ZB_ZCL_SET_STRING_VAL(g_attr_basic_date_code, commit_date, DATE_CODE_LEN);
+    } else {
+        ZB_ZCL_STRING_CLEAR(g_attr_basic_date_code);
+    }
+
+    if (full_version_len > SW_BUILD_ID_MAX_LEN) {
+        full_version_len = SW_BUILD_ID_MAX_LEN;
+    }
+    ZB_ZCL_SET_STRING_VAL(g_attr_sw_build_id, full_version, full_version_len);
+
+    LOG_INF("Basic cluster: ApplicationVersion %u.%u, DateCode %.*s, SWBuildID %.*s",
+            FW_VERSION_MAJOR,
+            FW_VERSION_MINOR,
+            ZB_ZCL_GET_STRING_LENGTH(g_attr_basic_date_code),
+            ZB_ZCL_GET_STRING_BEGIN(g_attr_basic_date_code),
+            ZB_ZCL_GET_STRING_LENGTH(g_attr_sw_build_id),
+            ZB_ZCL_GET_STRING_BEGIN(g_attr_sw_build_id));
+}
+
 void configure_zigbee(void)
 {
+    init_version_attributes();
+
     zigbee_erase_persistent_storage(ERASE_PERSISTENT_CONFIG);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_256MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(LONG_POLL_INTERVAL_MS));
